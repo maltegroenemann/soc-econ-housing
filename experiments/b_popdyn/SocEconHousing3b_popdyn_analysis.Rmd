@@ -1,0 +1,789 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIb: Analysis of the Population Dynamics Experiment"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(ggplot2)
+
+data_directory <- "./data/popdyn/" # TODO change directory
+
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+```
+
+# Experiment Description
+
+## Experiment Description
+
+Computational models that converge to an equilibrium might get stuck in a local equilibrium, and some equilibria might not be stable. It has been shown that adding noise to computational experiments may result in different, often better, predictions for real systems (Macy and Tsvetkova 2015; Mäs and Helbing 2020). An intuitive way to think about random events in residential mobility are moves into and out of the city. If the parameter *turnover* ($\in [0, 0.1]$) is greater than 0, a corresponding proportion of all households is removed from the grid, and newly created households are added to empty housing units so that the population density stays constant. This represents population dynamics, where people move in and out of the city. This creates random moves which introduce noise. Random moves also ensure that agents move to their optimal location without getting stuck in suboptimal places. The latter can be achieved with high vacancy rates or population turnover (Fossett and Waren 2005).
+
+The model simulates a grid of 30x30 and uses 3 x 3 x 2 = 18 levels of the initial parameters and additionally 4 levels of turnover, 0, 0.02, 0.05 and 0.1. The model repeats every combination 10 times, so the experiment consists of 18 x 4 x 10 = 720 runs. Visual analysis suggests that the model converges to the equilibrium before 100 steps with this size. Therefore, the model runs 200 steps. The output results in 30 x 30 x 720 x 200 = 129.6 million observations of housing units.
+
+Due to large data sizes and some memory-intensive calculations, the final rendering was performed on the Helix HPC at the University of Heidelberg. This analysis checks differences between levels of segregation and some neighbourhood characteristics by turnover as general indicators of model behaviour. It also analyses areas more likely to be affected by random moves: vacancy rates, neighbourhood stability over time and residential mobility.
+
+
+## Summary of Results
+
+Please consider the analysis of the main experiment for interpretations regarding the initial parameters a_preferences, r_correlation, and d_decay. The level of turnover rarely interacts with the other parameters. I will, therefore, barely refer to them.
+
+Overall, the model is robust against population turnover and does not seem to suffer from getting trapped in local equilibria. Even when ten percent of the population is exchanged every time step, the main conclusions from the model are unchanged. The most pronounced differences occurred between no turnover and some level of turnover; the differences between 2, 5, and 10 percent turnover are less pronounced. 
+
+When turnover occurs, a fixed proportion of households is removed every time step. This creates vacancies beyond the ones existing endogenously. As the vacant units that arise endogenously are typically the least desirable units, there is limited mobility into these vacant units. With exogenous vacancies, residential mobility increases as even middle- and high-income households may have the opportunity to move to a better housing unit that the previous household would not have left had it not been for exogenous removal. 
+
+The newly added households are spawned on a random vacant unit. Because vacant units tend to be the least desirable in low-income and status neighbourhoods, the incoming household likely presents a positive income shock to the neighbourhood. As a result, landlords (briefly) invest in housing quality and raise rents, even if the household moves away to find a better location elsewhere. Therefore, the distributions of vacancy rates, average neighbourhood income, status, rent and housing quality are less unequal. Particularly, the lower end of the neighbourhood income/status/rent/quality distributions is smaller, and the minimum neighbourhood averages are higher. It is not the case that there is total disinvestment and abandonment in entire neighbourhoods when there is turnover. With very high levels of turnover, the spatial inequalities in vacancy rates diminish, and the relationship between unit desirability and vacancy status reduces considerably.
+
+The increase in residential mobility, the positive income shocks when a new household is placed on vacancies in a poor neighborhood, and the negative income shock when the richest household moves out of the neighborhood make the neighborhoods less stable over time. Although there are considerable levels of segregation given all levels of turnover (at least when there is segregation in the no turnover condition), neighbourhoods are more volatile. However, as empirically established, it remains the case that the neighbourhoods at the very top and very end of the distribution are more stable than those in the middle.
+
+
+# City Level
+
+## Segregation
+
+
+```{r}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg", "Income", dimension),
+         dimension = if_else(dimension == "status_seg", "Status", dimension),
+         dimension = if_else(dimension == "quality_seg", "Quality", dimension),
+         dimension = if_else(dimension == "rent_seg", "Rent", dimension),
+         dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
+
+seg_long %>%
+  filter(d_decay == 0.95 & dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, dimension, turnover) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = turnover,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Segregation (d_decay == 0.95)", y = "H^R") +
+  scale_x_continuous(breaks = c(0, 0.05, 0.1)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(d_decay == 0.8 & dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, dimension, turnover) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = turnover,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Segregation (d_decay == 0.8)", y = "H^R") +
+  scale_x_continuous(breaks = c(0, 0.05, 0.1)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+In most cases, levels of segregation slightly decrease with a higher turnover. Under perfect correlation of income and status and households having a strong preference for the status of their neighbors, segregation increases slightly. But overall, the changes in levels are small and the relationship between segregation and the other model parameters is unaffected.
+
+## Inequality
+
+```{r}
+ggplot(city_data) +
+  aes(x = as.factor(turnover),
+      y = rent_gini,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Rent Inequality",
+       x = "turnover", y = "Gini index", fill  = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(city_data) +
+  aes(x = as.factor(turnover),
+      y = quality_gini,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Inequality in Housing Quality",
+       x = "turnover", y = "Gini index", fill  = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+When comparing the inequality in rents and housing quality over all housing units in the city, higher turnover lowers the Gini index. This is congruent with lower levels of segregation as the spatial spillovers make lead to that extreme distributions can only occur when they are spatial, i.e.: there can only very expensive housing units in very rich neighborhoods and only very run-down housing units in very run-down neighborhoods.
+
+There are two notable cases though. Unsurprisingly, as there is no model convergence when status and income are uncorrelated and households only value status of neighbors, the level of turnover does not matter. But unexpected is that the distribution of Gini coefficients becomes very long-tailed when there is turnover if households only value housing quality. There seem to be instances where cities (at least at one point in time) have very low inequalities in rents and housing quality.
+
+
+# Neighborhood Level
+
+## Income and Status
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_inc, 
+      x = as.factor(turnover),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Income", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_status, 
+      x = as.factor(turnover),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Status", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Within each parameter combination, the distributions are very similar in shape for different levels of turnover. Only variance in neighbourhood averages might be a bit reduced, which fits with the observations of the overall Gini indices above. When random households are moved to neighborhoods, we would indeed expect that the averages become less extreme.
+
+## Rent and Housing Quality
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_rent, 
+      x = as.factor(turnover),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Rent", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_quality, 
+      x = as.factor(turnover),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Housing Quality", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Again, the distributions are very similar in shape for different levels of turnover. Here, the reduction in variance seems to be due to less observations of neighborhood means at the lowest end of the distribution. When there is an occasional rich household moving into run-down low-rent neighborhoods, this immediately leads to a large uptick in housing quality and rents. And as these neighborhoods have more vacancies, the random moves are more likely to occur to these neighborhoods.
+
+## Neighborhood Stability
+
+### Examples
+
+```{r}
+set.seed(53129)
+nb_examples <- nb_data %>%
+  filter(sample_id %in% sample(unique(nb_data$sample_id), 9))
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_inc,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Income") +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_status,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Status") +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_rent,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Rent") +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_quality,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Housing Quality") +
+  theme(legend.position = "none")
+```
+
+Each facet of the example plots shows single runs ("cities"), and in each plot, the average income, status, rent, and housing quality in each neighbourhood are shown over time. The neighbourhoods are coloured differently to make it easier to see whether the same neighbourhood stays at the top or bottom of the distribution or changes over time.
+
+The examples suggest that the outcomes differ significantly in different simulation runs. In some instances, the differences in average income, status, rent, and housing quality are not large between neighbourhoods (likely in cases where no segregation emerges). However, if neighbourhood averages are more varied, neighbourhoods may rarely change their position in the hierarchy or do so more frequently. However, even in cases with more changes in neighbourhood averages over time, there is some continuity in neighbourhoods. 
+
+One interesting observation is that in some plots, the attributes of neighbourhoods at the lower end of the distribution experience a positive shock that then decays more slowly. This is likely because due to turnover, a newly created richer household is placed randomly in a poor neighborhood (see section on vacancies).
+
+The following plots analyse these outcomes concerning the model parameters.
+
+### NB Averages over Time
+
+```{r}
+stability_data <- nb_data %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, turnover, nb) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent),
+            ave_inc_t = mean(ave_inc, na.rm = TRUE),
+            sd_inc_t = sd(ave_inc, na.rm = TRUE),
+            ave_status_t = mean(ave_status, na.rm = TRUE),
+            sd_status_t = sd(ave_status, na.rm = TRUE),
+            ave_rent_t = mean(ave_rent, na.rm = TRUE),
+            sd_rent_t = sd(ave_rent, na.rm = TRUE),
+            ave_quality_t = mean(ave_quality, na.rm = TRUE),
+            sd_quality_t = sd(ave_quality, na.rm = TRUE))
+
+
+ggplot(stability_data) +
+  aes(x = ave_inc_t,
+      y = sd_inc_t,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Income",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_status_t,
+      y = sd_status_t,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Status",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rent_t,
+      y = sd_rent_t,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Rent",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_quality_t,
+      y = sd_quality_t,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Housing Quality",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+### NB Rank over Time
+
+```{r}
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income Rank",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status Rank",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent Rank",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Housing Quality Rank",
+       colour = "turnover", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+For the first time, we see substantive differences between runs with and without turnover regarding neighbourhood stability. This graphic shows the variation in a neighbourhood's average or rank over time. However, the results are almost identical, regardless of which characteristic we take the average or rank the neighbourhoods by.
+
+First, there are barely any differences by turnover when households value neighbourhood status, but status and income are uncorrelated. This is not surprising, as there are no stable and segregated neighborhoods as seen before concerning segregation levels. And when households only value housing quality, results are also unchanged by turnover and the neighbourhoods are most stable. In general, the more important housing quality is, the lower the variance in neighborhood averages and ranks.
+
+When household income and status are correlated, and they value the status of their neighbours, the runs with no turnover show much less variation in rank compared to those with turnover. However, the level of turnover does not make much of a difference. As seen in the segregation plots, we have segregation in these cases. However, the neighborhoods are more likely to change their profile in terms of resident characteristics and housing unit characteristics over time. In short, there is segregation, but neighborhoods are less stable. However, the wealthiest, most desirable and most expensive neighbourhoods change their rank less over time than those in the middle. Interestingly, while rich neighbourhoods change least in rank, the poorest change least in absolute average. The neighbourhoods at the end of the respective distributions change the least, in any case. These results are consistent with the empirical literature.
+
+
+# Vacant Housing
+
+
+```{r}
+city_data %>%
+  group_by(a_preferences, r_correlation, d_decay, turnover) %>%
+  summarise(vacancy_seg = mean(vacancy_seg)) %>%
+  ggplot() +
+  aes(x = turnover,
+      y = vacancy_seg,
+      colour = as.factor(d_decay)) +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation", y = "Theil Index H",
+       colour = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_vacant, 
+      x = as.factor(turnover),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Vacancy Rate", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+With increasing turnover, vacancy rates are becoming less extremely distributed. Especially the prevalence of fully occupied and fully unoccupied neighborhoods decrease. Empty units are also more evenly placed spatially, indicated by the decreasing Theil index for vacancy segregation.
+
+## Properties of Neighborhoods
+
+```{r}
+ggplot(nb_data) +
+  aes(x = ave_inc,
+      y = ave_vacant,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Income", y = "Neighborhood Vacancy Rate", 
+       colour = "turnover", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_status,
+      y = ave_vacant,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Status", y = "Neighborhood Vacancy Rate", 
+       colour = "turnover", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_rent,
+      y = ave_vacant,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Rent", y = "Neighborhood Vacancy Rate", 
+       colour = "turnover", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_quality,
+      y = ave_vacant,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Housing Quality", y = "Neighborhood Vacancy Rate", 
+       colour = "turnover", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Which neighbourhoods have more or less empty units has not changed. The least desirable neighbourhoods still have the highest vacancy rates. The case with no turnover shows a more extreme profile, likely only because many neighbourhoods have no vacancies in that condition but not in the other conditions.
+
+## Stability
+
+```{r}
+nb_data %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, turnover, nb) %>%
+  summarise(ave_rank_vac = mean(rank_vacant),
+            sd_rank_vac = sd(rank_vacant)) %>%
+  ggplot() +
+  aes(x = ave_rank_vac,
+      y = sd_rank_vac,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Average Neighborhood Rank by Vacancy Rate",
+       y = "SD of Rank by Vacancy Rate", colour = "turnover",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As seen in the neighbourhood stability results, the case with no turnover has much more stable neighbourhoods regarding vacancy rates. However, the neighbourhoods with the highest and lowest vacancy rates change the least again.
+
+## Properties of empty Units
+
+```{r}
+unit_data %>%
+  filter(empty) %>%
+  ggplot() +
+  aes(y = rent, 
+      x = as.factor(turnover),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Rent", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(empty) %>%
+  ggplot() +
+  aes(y = housing_quality, 
+      x = as.factor(turnover),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Housing Quality", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Empty units tend to be cheaper and of lower quality. These distributions change barely with turnover, except there are fewer observations at the very low end of the distribution.
+
+# Residential Mobility
+
+## Mobility between Units
+
+```{r}
+indiv_data <- unit_data %>%
+  filter(!is.na(id)) %>%
+  arrange(sample_id, r_correlation, a_preferences, d_decay, turnover, hh_id, t) %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, turnover, hh_id) %>%
+  summarise(prob_move_unit = mean(obj_id != Lag(obj_id), na.rm = TRUE),
+            prob_move_nb = mean(nb != Lag(nb), na.rm = TRUE),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status)) %>%
+  ungroup()
+
+ggplot(indiv_data) +
+  aes(x = as.factor(turnover),
+      y = prob_move_unit,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "turnover", y = "Probability of Moving", fill = "decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_unit,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving", colour = "turnover",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_unit,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving", colour = "turnover",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+When comparing the probability that a household moves to a different unit in one time step over multiple levels of turnover, we can see that residential mobility increases with turnover. Moreover, with higher turnover, both the poor and households with higher incomes have a higher probability of moving. Nonetheless, the poor are more likely to move than the rich, except the poorest, as they already live in the cheapest units. That the rich move suggests that the population turnover frequently frees up spaces where middle- to high-income households move voluntarily as they can increase their utility. The richest have the lowest mobility, though, as they already live in the best places and rarely can improve their housing situation when a vacancy arises. Only in the case of no segregated neighbourhoods does turnover not change the probability of moving.
+
+```{r}
+mobility_data <- unit_data %>%
+  filter(a_preferences == 0.25 & r_correlation == 0.5 & d_decay == 0.95 & !is.na(hh_id)) %>%
+  arrange(sample_id, hh_id, t) %>%
+  mutate(moved = if_else(obj_id == Lag(obj_id), "stayed", NA),
+         moved = if_else(obj_id != Lag(obj_id) & Lag(rent > hh_income), "forced to move", moved),
+         moved = if_else(obj_id != Lag(obj_id) & Lag(rent <= hh_income), "moved voluntarily", moved),
+         inc_decile = cut(hh_income, 
+                          quantile(hh_income, 
+                                   seq(0, 1, by = .1),
+                                   na.rm = TRUE),
+                          1:10)) %>%
+  filter(complete.cases(.))
+
+mobility_data %>%
+  filter(turnover == 0.02) %>%
+  ggplot() +
+  aes(x = inc_decile,
+      fill = moved) + 
+  geom_bar(position = "dodge") +
+  labs(x = "Income Decile", y = "Residency Status from t to t+1", fill = "",
+       title = "turnover = 0.02") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+mobility_data %>%
+  filter(turnover == 0) %>%
+  ggplot() +
+  aes(x = inc_decile,
+      fill = moved) + 
+  geom_bar(position = "dodge") +
+  labs(x = "Income Decile", y = "Residency Status from t to t+1", fill = "",
+       title = "turnover = 0") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The two graphs above illustrate residential mobility, as presented in the article. Here, not an individual probability is shown but changes (or no change) in housing units for every household by income deciles. It compares the level of turnover chosen for the main experiment, 0.02, with no turnover at all. 
+
+In the condition with population dynamics, the more realistic choice is that the richest have no incentive to move to different neighborhoods and housing units, as they cannot improve their residential satisfaction. In turn, as the most desirable places are occupied by the richest and have very high rents, the slightly less affluent households cannot improve their housing situation either and stay in the second-best houses and neighborhoods, etc. In equilibrium, households with high incomes are very likely to stay in the same housing unit from one point in time to the next. Households with low incomes, on the other hand, tend to move frequently. They often face unaffordable rents, even though they already live in low-quality housing units and neighborhoods. When they cannot afford the rent, due to the model's design, they need to move unless they are already at the cheapest location currently available. Therefore, they move often even though their housing situation is unlikely to improve after the move. Middle-income households also exhibit lower but still considerable levels of residential mobility. However, more often than not, this move is voluntary because an affordable vacancy became available, providing them with greater residential satisfaction. Because my model incorporates population dynamics, households are randomly removed and added to the simulation, allowing vacancies to open up randomly. Because most households have a middle income, and therefore most neighborhoods are in the middle of their respective distributions, most vacancies are both available and attractive to middle-income households. 
+
+Without population turnover, middle-income households would also move less, or not at all. When no vacancies open up exogenously due to removals from the grid, most households stay at their location. Interestingly, however, forced moves and mobility among people experiencing poverty are also much lower. Neighborhoods are much more stable without population turnover (see above), so people with low incomes are less commonly displaced when a neighborhood undergoes gentrification due to a vacancy opening up. People with low incomes still have the highest level of residential mobility, regardless.
+
+
+### Residential Mobility by Status
+
+```{r}
+reg_mobility <- indiv_data %>%
+  nest_by(a_preferences, r_correlation, d_decay, turnover) %>%
+  mutate(trivariate = list(lm(data = data, prob_move_unit ~ hh_status + hh_income))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_mobility) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se,
+      colour = as.factor(turnover)) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI", colour = "turnover",
+       title = "Linear Regression of Moving Probability on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Even though some confidence intervals do not overlap the reference line at 0, the inconsistent picture and large standard errors in these cases, lead me to interpret them as null findings. Status has no effect on the probability of moving.
+
+## Mobility between Neighborhoods
+
+```{r}
+ggplot(indiv_data) +
+  aes(x = as.factor(turnover),
+      y = prob_move_nb,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "turnover", y = "Probability of Moving NB", fill = "decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_nb,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving NB", colour = "turnover",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_nb,
+      linetype = as.factor(d_decay),
+      colour = as.factor(turnover)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving NB", colour = "turnover",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The changes by turnover in the probability of moving between neighbourhoods reflect the results of the probability of moving between units.
+
+
+# References
+
+Benard, Stephen, and Robb Willer. 2007. “A Wealth and Status-Based Model of Residential Segregation.” Journal of Mathematical Sociology 31(2):149–74. doi: 10.1080/00222500601188486.
+
+Fossett, Mark, and Warren Waren. 2005. “Overlooked Implications of Ethnic Preferences for Residential Segregation in Agent-Based Models.” Urban Studies 42(11):1893–1917. doi: 10.1080/00420980500280354.
+
+Macy, Michael, and Milena Tsvetkova. 2015. “The Signal Importance of Noise.” Sociological Methods and Research 44(2):306–28. doi: 10.1177/0049124113508093.
+
+Mäs, Michael, and Dirk Helbing. 2020. “Random Deviations Improve Micro–Macro Predictions: An Empirical Test.” Sociological Methods and Research 49(2):387–417. doi: 10.1177/0049124117729708.

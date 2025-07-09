@@ -1,0 +1,345 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIId: Analysis of the Vision Experiment"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(Hmisc)
+library(ggplot2)
+
+data_directory <- "data/" # TODO change directory
+
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+```
+
+# Experiment Description
+
+## Experiment Description
+
+In their paper, Laurie and Jaggi (2003) have established that in categorical segregation models, it makes a difference what agents consider their neighborhood. Athough their claim that depending on vision, segregation might not occur at all, was shown to be a specificity of their simulation setup (Fossett and Waren, 2005), they additionally find that segregation tends form larger clusters when vision increases. This lends itself also to look at the scale of segregation, which has been of some interest to scholars (see references). 
+
+Before, I have used a Moore neighborhood of distance 1, which refers to the 8 bordering (including diagonally) cells. Using the vision parameter, I can increase this distance. I vary it between 1 (8 neighbors), 2 (24 neighbors) and 3 (48 neighbors). The model simulates a grid of 30x30 and uses 3 x 3 x 2 = 18 levels of the initial parameters and additionally the 3 levels of vision just discussed. The model repeats every combination 10 times, so the experiment consists of 18 x 3 x 10 = 540 runs of 200 steps. The output results in 30 x 30 x 540 x 200 = 97.2 million observations of housing units. The first 100 observations are deletd as burn-in.
+
+The empirical analyses of the scale of segregation have only looked at segregation by categorical measures (most commonly race). I therefore need different methods to apply these concept to continuous variables. I will follow the idea of Reardon et al (2008) which create overlapping ego-neighborhoods of varying radii around the focal household to measure segregation at different scales. HR or R2 or H as segregation measure? TBC
+
+
+## Results Summary
+
+
+
+
+# City Level
+
+## Segregation ($H^R$ Index)
+
+
+```{r}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg", "Income", dimension),
+         dimension = if_else(dimension == "status_seg", "Status", dimension),
+         dimension = if_else(dimension == "quality_seg", "Quality", dimension),
+         dimension = if_else(dimension == "rent_seg", "Rent", dimension),
+         dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
+
+seg_long %>%
+  filter(d_decay == 0.95 & dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, dimension, vision) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = vision,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Segregation (d_decay == 0.95)", y = "H^R") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(d_decay == 0.8 & dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, dimension, vision) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = vision,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Segregation (d_decay == 0.8)", y = "H^R") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+## Geographic Scale of Segregation
+
+```{r}
+
+```
+
+# Neighborhood Level
+
+## Income and Status
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_inc, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Income", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_status, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Status", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+## Rent and Housing Quality
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_rent, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Rent", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_quality, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Housing Quality", fill = "d_decay", x = "turnover") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+## Neighborhood Stability
+
+When the definition of neighborhood in households utility calculation and rent setting by landlords increases, moves from single households should present less of a shock. It is therefore reasonable to expect that neighborhood stability increases with vision.
+
+```{r}
+stability_data <- nb_data %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, vision, nb) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent))
+
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Housing Quality",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+# Vacant Housing
+
+
+```{r}
+city_data %>%
+  group_by(a_preferences, r_correlation, d_decay, vision) %>%
+  summarise(vacancy_seg = mean(vacancy_seg)) %>%
+  ggplot() +
+  aes(x = vision,
+      y = vacancy_seg,
+      colour = as.factor(d_decay)) +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation", y = "Theil Index H",
+       colour = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_vacant, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Vacancy Rate", fill = "d_decay", x = "vision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# Residential Mobility
+
+```{r}
+indiv_data <- unit_data %>%
+  filter(!is.na(id)) %>%
+  arrange(sample_id, r_correlation, a_preferences, d_decay, turnover, hh_id, t) %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, turnover, hh_id) %>%
+  summarise(prob_move_unit = mean(obj_id != Lag(obj_id), na.rm = TRUE),
+            prob_move_nb = mean(nb != Lag(nb), na.rm = TRUE),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status))
+
+ggplot(indiv_data) +
+  aes(x = as.factor(vision),
+      y = prob_move_unit,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "vision", y = "Probability of Moving", fill = "decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_unit,
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving", colour = "vision",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_unit,
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving", colour = "vision",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+# References
+
+Fossett, Mark, and Warren Waren. 2005. “Overlooked Implications of Ethnic Preferences for Residential Segregation in Agent-Based Models.” Urban Studies 42(11):1893–1917. doi: 10.1080/00420980500280354.
+
+Laurie, Alexander J., and Narendra K. Jaggi. 2003. “Role of ‘Vision’ in Neighbourhood Racial Segregation: A Variant of the Schelling Segregation Model.” Urban Studies 40(13):2687–2704. doi: 10.1080/0042098032000146849.
+
+Lee, Barrett A., Sean F. Reardon, Glenn Firebaugh, Chad R. Farrell, Stephen A. Matthews, and David O’Sullivan. 2008. “Beyond the Census Tract: Patterns and Determinants of Racial Segregation at Multiple Geographic Scales.” American Sociological Review 73(5):766–91. doi:10.1177/000312240807300504.
+
+Östh, John, William A. V. Clark, and Bo Malmberg. 2015. “Measuring the Scale of Segregation Using K-Nearest Neighbor Aggregates.” Geographical Analysis 47(1):34–49. doi:10.1111/gean.12053.
+
+Reardon, Sean F., Stephen A. Matthews, David O’Sullivan, Barrett A. Lee, Glenn Firebaugh, Chad R. Farrell, and Kendra Bischoff. 2008. “The Geographic Scale of Metropolitan Racial Segregation.” Demography 45(3):489–514. doi:10.1353/dem.0.0019.

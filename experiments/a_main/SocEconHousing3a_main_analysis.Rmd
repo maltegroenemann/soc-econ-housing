@@ -1,0 +1,891 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIa: Analysis of the Main Experiment"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(DescTools)
+library(ggplot2)
+library(fixest)
+library(modelsummary)
+
+data_directory <- "./data/main/" # TODO change directory
+
+
+## for some reason, loading the unit_data.parquet file created by the dataprep R script from the main experiment does not work.
+## The file seems corrupted and every attempt at creating it new and saving it seems to fail as well.
+## I therefore need to create the dataset again from the raw data for the analysis.
+unit_data <- read_parquet(paste(data_directory,
+                                "unit_raw.parquet", 
+                                sep = "")) %>%
+  filter(t >= 300)
+
+parameters <- read_parquet(paste(data_directory, 
+                                 "parameters.parquet", 
+                                 sep = ""))
+
+unit_data <- full_join(parameters, unit_data, 
+                       by = "sample_id")
+
+unit_data <- unit_data %>% 
+  mutate(nb = paste(floor(x_coord / 5),
+                    floor(y_coord / 5), 
+                    sep = "_"),
+         empty = is.na(hh_id),
+         rent_to_income = rent / hh_income)
+
+nb_data <- unit_data %>%
+  group_by(sample_id, t, nb) %>%
+  summarise(ave_inc = mean(hh_income, na.rm = TRUE),
+            ave_status = mean(hh_status, na.rm = TRUE),
+            ave_quality = mean(housing_quality, na.rm = TRUE),
+            ave_rent = mean(rent, na.rm = TRUE),
+            ave_vacant = mean(empty)) %>%
+  mutate(rank_inc = length(unique(nb)) - rank(ave_inc) + 1, # inverting ranks to have the nb with highest ave as rank 1
+         rank_status = length(unique(nb)) - rank(ave_status) + 1,
+         rank_quality = length(unique(nb)) - rank(ave_quality) + 1,
+         rank_rent = length(unique(nb)) - rank(ave_rent) + 1,
+         rank_vacant = rank(ave_vacant)) # rank 1 is neighborhood with lowest vacancy rates
+
+unit_data <- full_join(unit_data, nb_data, 
+                       by = c("sample_id", "t", "nb"))
+
+
+# loading uncorrupted files from storage
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+```
+
+# Experiment Description
+
+## Experiment Description
+
+This main experiment simulates a 30x30 "city" (a toroidal grid) with 85% of all units being occupied. Therefore, there are 900 housing units and 765 households in each simulation. Income is distributed with a Beta(2, 5) distribution and 2 percent of all households are removed at each time step to model population dynamics and a corresponding number of newly created households is added to random empty housing units so that population density stays constant. Households calculate utility and landlords make their investment decisions based on the Moore neighborhood with a distance of one, so the 8 neighboring cells. 
+
+The parameters to vary are the correlation between income and status, as well as the relative importance of housing quality versus neighbors in households' preferences. Both of these parameters vary from 0 to 1 in steps of 0.25, so have 5 levels. I also vary the decay parameter between 0.95, 0.9, 0.85 and 0.8. Each parameter combination is run 15 times, resulting in 5 x 5 x 4 x 15 = 1500 runs. Each run lasts 400 steps but only the last 100 steps are saved for analysis. The data are prepared and saved for analysis (see separate files) and reuse by other researchers. As the data record variables from every household and housing unit at every time step, I record 900 housing units x 1500 runs x 400 time steps = 540 million observations for housing units of which 135 million are analysed.
+
+## Summary of Results
+
+
+# City Level
+
+## Segregation
+
+
+```{r}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg", "Income", dimension),
+         dimension = if_else(dimension == "status_seg", "Status", dimension),
+         dimension = if_else(dimension == "quality_seg", "Quality", dimension),
+         dimension = if_else(dimension == "rent_seg", "Rent", dimension),
+         dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
+
+seg_long %>%
+  filter(dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, d_decay, dimension) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(title = "Segregation", y = "H^R") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+Nevertheless, figure also shows that a preference for neighborhood status is not a necessary condition for social and economic segregation. Quite the opposite: segregation reaches its highest level in this condition. Because landlords invest based on rents in the local neighborhood, (not) investing into housing quality is contagious between landlords in a neighborhood. Landlords that do (not) invest into their housing stock increases (decreases) their rent, which motivates neighboring landlords to follow suit, further increasing (decreasing) rent in the neighborhood. There is again a self-reinforcing dynamic that stops when a marginal change in housing quality does not result in a meaningful change in rent anymore. Neighborhoods are particularly stable in this condition when housing quality only decays very slowly, as can be seen in the left column of figure. Neighborhood stability decreases when housing quality decays faster (see supplement). However, the assumption that landlords invest based on their neighborhood in the case where households do not value their neighborhood is implausible.
+
+Interestingly, the lowest levels of segregation can be observed when households only value their neighbors' status, particularly when status and income are uncorrelated (left panel of figure ). In this condition, a "chase game" between households emerges: when there is a neighborhood where comparably more high-status households live, desirability of this neighborhood is high. The neighborhood attracts households with higher incomes which can outcompete lower income households. But when the high-status households, that made neighborhood attractive in the first place, do not have high incomes, they need to move elsewhere. The neighborhood loses its desirability while the destination neighborhoods of the high-status households are on the rise and the cycle begins again. In these coditions, residential mobility is very high, and even highest for the most affluent households as they "chase" the attractive neighborhoods. The right column of figure  shows that neighborhoods are least stable in this condition: because neighborhoods frequently change their rank in the hierarchy, the mean ranks are very similar over all neighborhoods and the neighbrhoods have a high variance in ranks over time. If status and income are correlated though, some stable neighborhoods of high-income and high-status households as well as low-income and low-status households form. Stability is nonetheless lower than in the other conditions. It shows, however, that in this model, neighborhoods at the top and the bottom of the income distributions tend to be most stable. In the other conditions, this is barely visisble because overall change in neighborhoods is low. 
+
+
+
+Importantly, the two spatial interdependencies (households' preferences for neighbors and landlords investment decisions) reinforce and stabilize each other. If housing quality would decay fast, another neighborhood might provide better housing than ones current neighborhood after only a short time of disinvestment. And if households would only value neighborhood status, attractive neighborhoods with high-status but low-income residents can form, that attract more affluent households. These then displace the the very residents they moved to the neighborhood for. With only status as a preference and low correlation between income and status, a chase game can emerge where rich households follow high status households and segregation is low and neighborhoods are unstable. While stable segregation can occur with either exclusive preference (only status or only housing quality), it requires very slowly decaying housing quality or  a high correlation between income and desirability as a neighbor.
+
+
+Neighborhood stability, crucially, does not require the absense of residential mobility though. Especially middle- to low-income households move frequently. As this range makes up most of the income distributions, there are many households and consequently neighborhoods and housing units within their price range where they can move to. On the other hand, because of their relatively low income, they are also somewhat at risk of displacement by small rent increases due to fluctuations in the local population. Even though they are more at risk of displacement, the poorest households move less frequently as they are already in the cheapest housing units and have no alternative to staying and overpaying. However, this might be a result of this model having no evictions and homelessness.
+
+
+
+
+Not only is there a negative relation with residential mobility, but segregated cities also have more stable neighborhoods. Figure  shows a neighborhood's rank's standard deviation over time. Based on average neighborhood income/status/quality, I calculated which rank a neighborhood has. If neighborhoods are stable, their rank should change rarely and only a few rank positions, so their standard deviation should be close to 0. While neighborhood stability is low in the chase game condition or for neighborhood status when there is no or little correlation between status and income, neighborhoods are relatively stable the more households value housing quality and status and income are correlated. In all cases, the neighborhoods at the extremes of the distributions are most stable, again reflecting empirical evidence.
+
+## Inequality
+
+```{r}
+ggplot(city_data) +
+  aes(x = as.factor(a_preferences),
+      y = rent_gini) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(title = "Rent Inequality",
+       y = "Gini index", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(city_data) +
+  aes(x = as.factor(a_preferences),
+      y = quality_gini) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(title = "Inequality in Housing Quality",
+       y = "Gini index", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# Neighborhood Level
+
+## Income and Status
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_inc, 
+      x = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Income", x = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_status, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Average NB Status", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+## Rent and Housing Quality
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_rent, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Average NB Rent", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_quality, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Average NB Housing Quality", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Neighborhood Stability
+
+### Examples
+
+```{r}
+set.seed(53129)
+nb_examples <- nb_data %>%
+  filter(sample_id %in% sample(unique(nb_data$sample_id), 9))
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_inc,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Income") +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_status,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Status") +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_rent,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Rent") +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t, 
+      y = ave_quality,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Housing Quality") +
+  theme(legend.position = "none")
+```
+
+### NB Averages over Time
+
+```{r}
+stability_data <- nb_data %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, nb) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent),
+            ave_inc_t = mean(ave_inc, na.rm = TRUE),
+            sd_inc_t = sd(ave_inc, na.rm = TRUE),
+            ave_status_t = mean(ave_status, na.rm = TRUE),
+            sd_status_t = sd(ave_status, na.rm = TRUE),
+            ave_rent_t = mean(ave_rent, na.rm = TRUE),
+            sd_rent_t = sd(ave_rent, na.rm = TRUE),
+            ave_quality_t = mean(ave_quality, na.rm = TRUE),
+            sd_quality_t = sd(ave_quality, na.rm = TRUE))
+
+
+ggplot(stability_data) +
+  aes(x = ave_inc_t,
+      y = sd_inc_t,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Income",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_status_t,
+      y = sd_status_t,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Status",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rent_t,
+      y = sd_rent_t,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Rent",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_quality_t,
+      y = sd_quality_t,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean",
+       y = "SD",
+       title = "Neighborhood Stability by Housing Quality",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+### NB Rank over Time
+
+```{r}
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income Rank",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status Rank",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent Rank",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Housing Quality Rank",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# Vacant Housing
+
+
+```{r}
+city_data %>%
+  group_by(a_preferences, r_correlation, d_decay) %>%
+  summarise(vacancy_seg = mean(vacancy_seg)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = vacancy_seg) +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation", y = "Theil Index H") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_vacant, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Average NB Vacancy Rate", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Properties of Neighborhoods
+
+```{r}
+ggplot(nb_data) +
+  aes(x = ave_inc,
+      y = ave_vacant,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Average NB Income", y = "Neighborhood Vacancy Rate", 
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_status,
+      y = ave_vacant,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Average NB Status", y = "Neighborhood Vacancy Rate", 
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_rent,
+      y = ave_vacant,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Average NB Rent", y = "Neighborhood Vacancy Rate", 
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_quality,
+      y = ave_vacant,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Ave. NB Housing Quality", y = "Neighborhood Vacancy Rate", 
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Stability
+
+```{r}
+nb_data %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, nb) %>%
+  summarise(ave_rank_vac = mean(rank_vacant),
+            sd_rank_vac = sd(rank_vacant)) %>%
+  ggplot() +
+  aes(x = ave_rank_vac,
+      y = sd_rank_vac,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Average Neighborhood Rank by Vacancy Rate",
+       y = "SD of Rank by Vacancy Rate", colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Properties of empty Units
+
+```{r}
+unit_data %>%
+  filter(empty) %>%
+  ggplot() +
+  aes(y = rent, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Rent", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(empty) %>%
+  ggplot() +
+  aes(y = housing_quality, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Housing Quality", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# Residential Mobility
+
+## Mobility between Units
+
+```{r}
+indiv_data <- unit_data %>%
+  filter(!is.na(id)) %>%
+  arrange(sample_id, r_correlation, a_preferences, d_decay, hh_id, t) %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, hh_id) %>%
+  summarise(prob_move_unit = mean(obj_id != Lag(obj_id), na.rm = TRUE),
+            prob_move_nb = mean(nb != Lag(nb), na.rm = TRUE),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status))
+
+ggplot(indiv_data) +
+  aes(x = as.factor(a_preferences),
+      y = prob_move_unit) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Probability of Moving") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_unit,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving", colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_unit,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving", colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Mobility between Neighborhoods
+
+```{r}
+ggplot(indiv_data) +
+  aes(x = as.factor(a_preferences),
+      y = prob_move_nb) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Probability of Moving NB") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_nb,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving NB", colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_nb,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving NB", colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# Individual Level
+
+## Rent
+
+### Rent and Income
+
+```{r}
+ggplot(unit_data) +
+  aes(y = rent, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Rent", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(y = log(rent_to_income), 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  geom_hline(yintercept = 1, 
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Log(Rent / Income)", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = rent,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Rent",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = log(rent_to_income),
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 1, colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Log(Rent / Income)",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Housing Inequality
+
+```{r}
+ggplot(unit_data) +
+  aes(y = housing_quality, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Housing Quality", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = housing_quality,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Housing Quality",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_status,
+      y = housing_quality,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Status",
+       y = "Housing Quality",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+reg_quality <- unit_data %>%
+  nest_by(a_preferences, r_correlation, d_decay) %>%
+  mutate(trivariate = list(lm(data = data, housing_quality ~ hh_status + hh_income))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_quality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI",
+       title = "Linear Regression of Housing Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Neighborhood Inequality
+
+```{r}
+ggplot(unit_data) +
+  aes(y = ave_status, 
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Neighborhood Quality", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = ave_status,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Neighborhood Quality",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_status,
+      y = ave_status,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Status",
+       y = "Neighborhood Quality",
+       colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+reg_nbquality <- unit_data %>%
+  nest_by(a_preferences, r_correlation, d_decay) %>%
+  mutate(trivariate = list(lm(data = data, ave_status ~ hh_status + hh_income))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_nbquality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI",
+       title = "Linear Regression of Neighborhood Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Residential Mobility
+
+```{r}
+indiv_data <- unit_data %>%
+  filter(!is.na(id)) %>%
+  arrange(sample_id, r_correlation, a_preferences, d_decay, hh_id, t) %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, hh_id) %>%
+  summarise(prob_move_unit = mean(obj_id != Lag(obj_id), na.rm = TRUE),
+            prob_move_nb = mean(nb != Lag(nb), na.rm = TRUE),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status))
+
+ggplot(indiv_data) +
+  aes(y = prob_move_unit,
+      x = as.factor(a_preferences)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(y = "Probability of Moving", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_unit,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving", colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_unit,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving", colour = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```

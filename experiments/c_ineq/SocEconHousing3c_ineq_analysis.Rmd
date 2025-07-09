@@ -1,0 +1,896 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIc: Analysis of the Inequality Experiment"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(DescTools)
+library(ggplot2)
+library(fixest)
+library(modelsummary)
+
+data_directory <- "./data/ineq/" # TODO change directory
+
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+
+# create ad merge average Gini values for the three distribution shapes
+gini_df <- unit_data %>%
+  group_by(distribution) %>%
+  summarise(dist_gini = Gini(hh_income, na.rm = TRUE))
+
+unit_data <- unit_data %>%
+  full_join(gini_df, by = "distribution") %>%
+  mutate(dist_gini_f = as.factor(round(dist_gini, digits = 2)))
+
+nb_data <- nb_data %>%
+  full_join(gini_df, by = "distribution") %>%
+  mutate(dist_gini_f = as.factor(round(dist_gini, digits = 2)))
+
+city_data <- city_data %>%
+  full_join(gini_df, by = "distribution") %>%
+  mutate(dist_gini_f = as.factor(round(dist_gini, digits = 2)))
+```
+
+# Experiment Description
+
+## Experiment Description
+
+It has been an established that increases in income inequality cause increases in income segregation (e.g., Reardon and Bischoff 2011, Yavas 2019). This experiment calculates a reduced model that additionally varies the income and status distribution. The Beta distribution in the model is set up to always be unimodal and right skewed with an expected value of about 0.2857: Beta(a = distribution, b = 2.5 * distribution). The distribution parameter therefore varies only income inequality but not average income.
+
+The model simulates a grid of 30x30 and uses 3 x 3 x 2 = 18 levels of the initial parameters and additionally 3 levels of inequality. Specifically, I use income distributions of Beta(1, 2.5), Beta(2, 5) and Beta(3, 7.5). These distributions correspond to Gini indices of about 0.42, 0.32, and 0.26 respectively. The model repeats every combination 10 times, so the experiment consists of 18 x 3 x 10 = 540 runs of 200 steps. The output results in 30 x 30 x 540 x 200 = 97.2 million observations of housing units.
+
+The following figure shows how these three different distributions look like and what the status distribution looks like for different correlation parameters. When the correlation parameter is 0 or 1, the distribution of status is identical to the Beta distribution. But when the parameter is in between, the shape of the status distribution is slightly different as the sum of two distributions is shifted towards a normal distribution according to the central limit theorem. The numbers to the right of each histogram shows the Pearson correlation between income and status. The actual correlation between income and status as measured by the Pearson coefficient is higher than the model parameter (when it is not 0 or 1). A model parameter of 0.5 corresponds to a correlation of 0.71, a strong but not perfect correlation. Because I believe that status and income are strongly but not perfectly correlated, I use a correlation parameter of 0.5 as the most realistic condition. All robustness checks therefore use only three levels of the correlation parameter: no correlation, perfect correlation, and the realistic condition.
+
+```{r}
+corr <- unit_data %>%
+  group_by(r_correlation, dist_gini_f) %>%
+  summarise(cor = round(cor(hh_income, hh_status, 
+                            use = "complete.obs"), 
+                        digits = 2))
+
+ggplot(unit_data) +
+  aes(x = hh_status) +
+  geom_histogram() +
+  geom_text(data = corr,
+            aes(label = cor),
+            x = 0.75, y = 500000) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(dist_gini_f),
+             labeller = label_both) +
+  labs(title = "Status (and Income) Distributions and Correlations", 
+       x = "Status") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+
+## Results Summary
+
+With increasing income (and status) inequality, many variables endogenous to the model, such as rent, housing quality, and neighbourhood averages, also become more unequal. Contrary to existing empirical research, segregation does not increase with inequality in my model. Yavas (2019) already made the same observation for utility maximisation models and, therefore, proposed a bounded rationality model that can explain the link between inequality and segregation. In a bounded rationality framework, making a segregating move becomes more likely when the absolute differences between neighbourhoods increase. As observed here as well, the differences in desirability between housing units and neighborhoods increase with income inequality. In utility maximisation models, households always move when there is a marginal improvement in utility, even though this is unrealistic. In my model, residential mobility seems to decrease slightly with higher income inequality, as the number of places a household can and wants to move to decreases due to the higher inequality in rents and desirability.
+
+The increases in inequality in rents, housing quality, and neighbourhood averages are not uniform over the global parameters. As households value their neighbourhoods and landlords invest based on changes in rents within them, the effect of income inequality on the inequality in other variables is moderated by the level of segregation in a city. The increased inequality in rents and housing quality means that some households have higher residential quality, whereas others have very low-quality housing. Similarly, the distribution of rent burdens becomes more extreme as well. However, on average, increasing income inequality does not result in more rent-burdened households. 
+
+Another discrepancy with empirical research uncovered in this robustness check is that the richest quantiles of the income distribution are not the most segregated in my model. While there is typically a U-shaped relationship between income quantiles and income segregation at a given income threshold, income segregation decreases in income quantiles in my model. This, again, could be due to the utility maximisation implementation, or it could be due to the shape of the income distribution, with very few affluent households, so that they do not have sufficient critical mass to segregate, or affluent households may have different preferences in the real world. In contrast, my model assumes that all households have the same preference function.
+
+
+# City Level
+
+## Segregation ($H^R$ Index)
+
+
+```{r}
+seg_long <- city_data %>%
+  select(-ends_with("gini"), dist_gini) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg", "Income", dimension),
+         dimension = if_else(dimension == "status_seg", "Status", dimension),
+         dimension = if_else(dimension == "quality_seg", "Quality", dimension),
+         dimension = if_else(dimension == "rent_seg", "Rent", dimension),
+         dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
+
+seg_long %>%
+  filter(d_decay == 0.95 & dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, dimension, dist_gini) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = dist_gini,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Segregation (d_decay == 0.95)", y = "H^R", 
+       x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(d_decay == 0.8 & dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, dimension, dist_gini) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = dist_gini,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Segregation (d_decay == 0.8)", y = "H^R", 
+       x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The data indicates that contrary to empirical studies, residential segregation does not increase as income inequality rises. Regardless of the dimension considered, residential segregation remains constant across varying levels of income inequality.
+
+Yavas (2019) already observed that segregation models that assume utility maximisation cannot explain the link between income inequality and segregation (see footnote 13 on page 8). He instead implements a bounded-rationality decision rule, which can reproduce the empirical result that higher income inequality causes higher income inequality.
+
+In utility maximisation models, households move when there is a vacancy that marginally improves their utility (or their rent is too high). They move to the best available location there is (or the cheapest). This results in a spatial equilibrium where households tend to be in their ideal location, given their preferences and budget constraints. Given the model parameters, households segregate as much as possible. Segregation levels in real cities tend to be much lower than those obtained in computational models. Reardon and Bischoff (2011) report values of $H^R$ consistently below 0.2. Although comparing these empirical values to those obtained in the model analysis presents many difficulties, as empirical data are much noisier than simulation data, and we use different neighbourhood sizes, etc., it is reasonable to say that in real cities, households do not segregate as much.
+
+In the bounded rationality model by Yavas, households do not move to improve their utility marginally but only after surpassing a threshold. They search for new housing if they cannot afford their rent and/or are dissatisfied with their neighbourhood (see page 7). Therefore, marginal increases in utility do not motivate moves and determine locations. However, the absolute differences matter, as the probability of moving increases with the difference between the rent and their budget, as well as their status and the neighbourhood's status. 
+
+When income inequality rises, the spread of the income distribution and the average differences in household incomes increase. As status is highly correlated with income (in the models by Benard and Willer, Yavas and myself, status is sampled conditional on income), increasing income inequality also leads to increased status inequality. As the absolute differences in rents (because rent distribution follows income distribution when there is competition) and status increase, the probability of moving increases in the bounded rationality model, leading to more segregating moves (Yavas, 2019). However, the probability of moving is unaffected in the utility maximisation models as households are already maximally segregated. That absolute differences make a difference for residential location makes substantial sense: households will not move for a minuscule difference in housing or neighbourhood quality, but when housing or neighbourhood quality is more unequal, a move to a different location yields greater returns and becomes more likely. Alternatively, as income inequality rises, affluent households can bid up the price for desirable housing units, also increasing the inequality in rents. Whereas less wealthy households could afford to live in a given neighbourhood before, the rent increases may trigger segregating moves.
+
+These results connect to existing research on the consequences of increased income inequality. Notably, some scholars argue that increased income inequality increases competition for status goods and housing is a status good: "top-income groups are shifting their consumption levels upwards, and therefore, middle- and lower-income groups are incentivised to do the same in order to maintain the relative distances and not fall behind" (Dewilde and Waitkus: 18). And while the mechanisms in this model explain why housing quality is typically unequal in space, the neighborhood in itself might be a positional good as well. This is particularly apparent for households with children, as residential choice affects school quality (Owens, 2016; Goldstein and Hastings, 2019).
+
+In short, utility maximisation models are blind to what a given difference in utility means. Households move whenever they can no longer afford rent or can improve their living situation. However, in reality, households will not move when rent is only slightly above their budget or another home is marginally better. When income inequality increases, rents and status become more unequal, and absolute differences in rents and utility become larger. When households move when the absolute differences exceed a given threshold, increasing inequality makes it more likely that households make segregating moves.
+
+
+## Segregation Profiles
+
+```{r}
+## Defining Segregation Measures
+entropy <- function(p) {
+  e <- ifelse(p == 0 | p == 1, 
+              0, # 0 * log2(1 / 0) := 0; see Reardon et al (2006), p. 11
+              p * log2(1 / p) + (1 - p) * log2(1 / (1 - p)))
+  return(e)
+}
+
+# entropy for the percentile below a threshold of a distribution 
+# notation following Reardon and Bischoff (2011) p. 1110
+E_p <- function(variable, threshold) {
+  p <- mean(variable <= threshold, na.rm = TRUE)
+  return(entropy(p))
+}
+
+
+# Theil segregation index for a continuous variable and a single threshold
+H_p <- function(variable, neighborhoods, threshold){
+  # notation following Reardon and Bischoff (2011) p. 1111
+  # this function assumes that we have a dataset with a continuous variable of individuals in neighborhoods
+  df <- data.frame(variable = variable, neighborhoods = neighborhoods)
+  
+  entropy_total_E <- E_p(variable, threshold)
+  pop_total_T <- sum(is.na(variable) == FALSE)
+  
+  df_nb <- data.frame(nb_j = unique(neighborhoods),
+                      pop_tj = NA,
+                      entropy_Ej = NA)
+  for (j in 1:length(df_nb$nb_j)) {
+    temp <- subset(df, neighborhoods == df_nb$nb_j[j])
+    df_nb$pop_tj[j] = sum(is.na(temp$variable) == FALSE)
+    df_nb$entropy_Ej[j] = E_p(variable = temp$variable, threshold = threshold)
+  }
+  
+  relative_entropies <- (df_nb$pop_tj * df_nb$entropy_Ej) / (pop_total_T * entropy_total_E)
+  H_p <- 1 - sum(relative_entropies, na.rm = TRUE)
+  
+  return(H_p)
+}
+```
+
+
+```{r}
+seg_quantile <- unit_data %>%
+  filter(t == 150) %>%
+  group_by(sample_id, a_preferences, r_correlation, d_decay, dist_gini_f, 
+           hh_income, hh_status, rent, housing_quality, nb) %>%
+  reframe(decile = seq(.1, .9, by = .1))  %>%
+  ungroup() %>%
+  group_by(sample_id, a_preferences, r_correlation, d_decay, dist_gini_f, decile) %>%
+  summarise(income_Hp = H_p(hh_income, nb, quantile(hh_income, decile, na.rm = TRUE)),
+            status_Hp = H_p(hh_status, nb, quantile(hh_status, decile, na.rm = TRUE)),
+            rent_Hp = H_p(rent, nb, quantile(rent, decile, na.rm = TRUE)),
+            quality_Hp = H_p(housing_quality, nb, quantile(housing_quality, decile, na.rm = TRUE)))
+
+
+ggplot(seg_quantile) +
+  aes(x = decile,
+      y = income_Hp,
+      colour = dist_gini_f,
+      linetype = as.factor(d_decay)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "Income Gini", 
+       linetype = "d_decay", title = "Income Segregation by Quantiles") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(seg_quantile) +
+  aes(x = decile,
+      y = status_Hp,
+      colour = dist_gini_f,
+      linetype = as.factor(d_decay)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "Income Gini", 
+       linetype = "d_decay", title = "Status Segregation by Quantiles") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(seg_quantile) +
+  aes(x = decile,
+      y = rent_Hp,
+      colour = dist_gini_f,
+      linetype = as.factor(d_decay)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "Income Gini", 
+       linetype = "d_decay", title = "Rent Segregation by Quantiles") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(seg_quantile) +
+  aes(x = decile,
+      y = quality_Hp,
+      colour = dist_gini_f,
+      linetype = as.factor(d_decay)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "Income Gini", 
+       linetype = "d_decay", title = "Quality Segregation by Quantiles") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+While $H^R$ gives a summary measure of residential segregation, it can also be disaggregated to see who is most segregated from whom. One of the main contributions of Reardon and Bischoff (2011) is that they demonstrate the higher spatial concentration of the poorest and most affluent households. To illustrate this, they plot segregation profiles of the Theil information theory index $H$, which measures how segregated the lowest p per cent of the distribution is. In the empirical data, these segregation profiles consistently show U-curves, indicating that the poor and the rich are more spatially isolated than those in the middle of the distribution.
+
+My model can reproduce this finding in part as (at least in the empirically plausible cases of both preferences and a correlation between status and income) the lower quantiles of the income distribution tend to be more segregated. However, the curve does not increase again: the most affluent households tend to be the least segregated. 
+
+This functional form might be a result of the form of the income distribution. As there are only a few households at the very top of the income distribution, they need to share their neighbourhood with more middle-class neighbours, even if they are in the very best neighbourhoods. Nevertheless, this might not hold when simulating larger cities, where there are more affluent households, and the number of affluent households reaches a critical mass to form exclusively affluent neighbourhoods. Another explanation for this difference might be the assumption of this model that all households have the same preferences. All households would agree on which units are most and least desirable, but they have different chances of realising that they can live there, as they have different budgets. It is possible that preferences are not uniform, and the rich, in particular, value living in exclusive neighbourhoods. Lastly, it could again be a result of the decision rule, as the bounded rationality model by Yavas (2019) can reproduce this pattern. Similarly to the argument before, in the long tail of the income distribution, absolute differences become larger, which makes it more likely for the affluent to make segregating moves compared to the middle class. However, in utility maximisation models, absolute differences do not matter as households move for every marginal improvement in utility.
+
+The literature on these segregation profiles has primarily focused on income segregation. Therefore, there is no empirical data to compare the segregation profiles of the other dimensions. While the profiles for status segregation largely reflect the results of the income segregation profiles, given that status is correlated with income, rent and housing quality show different patterns. When only neighbourhood status matters for households, rent and housing quality quantiles are distributed similarly in space (as long as the correlation is low, no segregation emerges anyway). However, in the other conditions, the plots show inverse U-curves, which suggests that the housing units with the lowest and highest rents and housing qualities are less unequally placed in space.
+
+Importantly, for this robustness check, there are no differences in patterns by levels of income inequality. Given the previous results that segregation is not different by income inequality level, this is not surprising. Yavas (2019) demonstrates that, regardless of income inequality levels, the general pattern of a U-shaped segregation profile remains unchanged. The curves only have different levels to reflect higher overall segregation.
+
+## Inequality
+
+```{r}
+ggplot(city_data) +
+  aes(x = dist_gini_f,
+      y = rent_gini,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Rent Inequality",
+       x = "Income Gini", y = "Gini index", fill  = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(city_data) +
+  aes(x = dist_gini_f,
+      y = quality_gini,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Inequality in Housing Quality",
+       x = "Income Gini", y = "Gini index", fill  = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The figures show that rents and housing quality tend to be distributed more unequally when income and status are more unequal. This is to be expected as rents are a mapping of the desirability of the housing units onto the income distribution. There is competition for the best housing units and the richest can outcompete less wealthy households to attain these desirable housing units. When the rich become richer, they can pay higher rent to outcompete others for desirable housing units and they need to because their direct competitiors have become wealthier as well. This cascades down the income distribution so that rents become more unequally distributed with higher income inequality. And because landlords invest into housing quality based on average rent in the neighborhood, this directly translates into more unequal housing quality within the city.
+
+However, the increase in inequality in rents and housing quality is not uniform between model parameters. There is barely any increase in inequality in the upper right corner, where there is also no segregation emerging. Specifically, there is a slight increase in rent inequality and no increase in inequality in housing quality. This is the case where households only value neighbors' status and status and income are uncorrelated. Households move close to high status neighbors and rents rise in high status neighborhoods which leads landlords to invest into housing quality. But because the high status households are not necessarily the wealthy, rising rents displaces them and therefore removes the reason why the neighborhood become attractive in the first place. And because housing quality does not matter to households in this case, there is no persistence of the desirability and the high rents. Landlords therefore do not invest gaian and housing quality falls. Because this cycle continues frequently, the average housing quality is high though as it does not decay before the next boom-bust cycle of the neighborhood (see Individual Level: Housing Inequality). Because there no stable and segregated neighborhoods, the neighborhood averages in rents trend towards the mean. This limits the effect of increased income inequality on housing quality as landlords invest into housing quality very similarly in all neighborhoods. In contrast, when there is segregation, the increase in income inequality and the resulting increase in rent inequality is unequally distributed between neighborhoods. As this is the cue for landlords to invest or not, housing quality is more unequal between neighborhoods. Because households also value housing quality, rich households move to improved neighborhoods and out of deprived neighborhoods, reinforcing the segregating dynamic. This way, a higher inequality in incomes leads to a polarisation of housing quality and rents.
+
+The following regression tests this interpretation of the figures more formally for housing quality using fixed-effects OLS regression. To see whether the effect of income inequality on housing inequality is greater in more segregated cities, I regress the Gini of housing quality on the Gini of the income distribution interacted with the segregation index for rent. I used rent segregation as average neighborhood rent is the cue for landlords' investment decisions, but the different dimensions of residential segregation correlate highly. As the levels of inequality and segregation are very different between global parameters, I use the preferences, correlation and decay parameters as joint fixed effects. As the different time points within one simulation run are not independent from each other, I use clustered standard errors by sample id.
+
+```{r}
+modelsummary(list(
+  feols(data = city_data,
+              quality_gini ~ rent_seg + dist_gini | a_preferences^r_correlation^d_decay,
+              cluster = "sample_id"),
+  feols(data = city_data,
+              quality_gini ~ rent_seg * dist_gini | a_preferences^r_correlation^d_decay,
+              cluster = "sample_id")
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001), 
+  gof_map = c("nobs", "r.squared", "bic"))
+```
+
+As the regression outputs a large and positive interaction effect between income inequality and rent segregation on the inequality in housing quality, the interpretation is confirmed.
+
+# Neighborhood Level
+
+## Income and Status
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_inc, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Income", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_status, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Status", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As the income and status distributions at the individual level become more unequal (remember: status is sampled with the same distribution as income and if income and status are correlated, status is sampled conditional on income), the distributions of neighborhood averages in income and status become more unequal as well. This is in part a necessity, as can be seen in the upper right corner: even when there is no segregation the spread of the distribution increases with increasing income Gini. But this is amplified when neighborhoods are segregated. But besides that the distributions are stretching out with greater income inequality, the shapes of the distributions remain similar. The substantive take-away here is that greater inequality at the individual level creates more unequal neighbourhoods. The increase in neighborhood inequality due to individual inequality is moderated by segregation: the more segregated a city is, the greater the effect of individual inequality on neighborhood inequality.
+
+The following regression tests this observation more formally for neighborhood income inequality and income segregation. It uses OLS with the preferences, correlation and decay parameters as combined fixed effects. It therefore estimates only the change in neighborhood inequality by individual inequality within the other model parameters. Standard errors are clustered by sample ID as the different time points within one run are not independent of each other.
+
+```{r}
+nb_reg <- nb_data %>%
+  group_by(sample_id, a_preferences, r_correlation, d_decay, dist_gini, t) %>%
+  summarise(nb_gini_inc = Gini(ave_inc),
+            nb_gini_quality = Gini(ave_quality))
+
+nb_reg <- city_data %>%
+  select(sample_id, inc_seg, rent_seg) %>%
+  full_join(nb_reg, by = "sample_id")
+
+modelsummary(list(
+  feols(data = nb_reg,
+              nb_gini_inc ~ inc_seg + dist_gini | a_preferences^r_correlation^d_decay,
+              cluster = "sample_id"),
+  feols(data = nb_reg,
+              nb_gini_inc ~ inc_seg * dist_gini | a_preferences^r_correlation^d_decay,
+              cluster = "sample_id")
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001), 
+  gof_map = c("nobs", "r.squared", "bic"))
+```
+
+The regression confirms this interpretation as there is a large positive interaction effect between segregation and inequality: the effect of individual level income inequality on neighborhood inequality in average income increases with residential segregation by income.
+
+
+## Rent and Housing Quality
+
+```{r}
+ggplot(nb_data) +
+  aes(y = ave_rent, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Rent", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_quality, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Housing Quality", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Similar arguments to the discussion of the effect of individual level income and status inequality apply for rents and housing quality. As rent is a mapping of desirability of a unit onto the income distribution and landlords invest depending on local changes in rent, the rent and housing quality distributions become more unequal with a more unequal income (and status) distribution. On the neighborhood level, the distribution of the averages spreads out always when the individual level inequality increases, but when a city is more segregated, these more unequal rent and quality distributions lead to higher inequalities in neighborhood averages (see also discussion in the City Level section).
+
+```{r}
+modelsummary(list(
+  feols(data = nb_reg,
+              nb_gini_quality ~ rent_seg + dist_gini | a_preferences^r_correlation^d_decay,
+              cluster = "sample_id"),
+  feols(data = nb_reg,
+              nb_gini_quality ~ rent_seg * dist_gini | a_preferences^r_correlation^d_decay,
+              cluster = "sample_id")
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001), 
+  gof_map = c("nobs", "r.squared", "bic"))
+```
+
+
+## Neighborhood Stability
+
+```{r}
+stability_data <- nb_data %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, dist_gini_f, nb) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent))
+
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Housing Quality",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+There are no differences in neighbourhood stability depending on income (and status) inequality.
+
+# Vacant Housing
+
+
+```{r}
+city_data %>%
+  group_by(a_preferences, r_correlation, d_decay, dist_gini, dist_gini_f) %>%
+  summarise(vacancy_seg = mean(vacancy_seg)) %>%
+  ggplot() +
+  aes(x = dist_gini,
+      y = vacancy_seg,
+      colour = as.factor(d_decay)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation", y = "Theil Index H",
+       colour = "d_decay", x = "Income Gini") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(y = ave_vacant, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Average NB Vacancy Rate", fill = "d_decay", x = "Income Gini") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+There are no substantial differences in vacancy rates depending on income (and status) inequality. Although there might be a miniscule decrease in vacancy segregation with increasing income inequality.
+
+# Individual Level
+
+## Rent
+
+### Rent and Income
+
+```{r}
+ggplot(unit_data) +
+  aes(y = rent, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Rent", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(y = log(rent_to_income), 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  geom_hline(yintercept = 1, 
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Log(Rent / Income)", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = rent,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Rent",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = log(rent_to_income),
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 1, colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Log(Rent / Income)",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>% 
+  group_by(a_preferences, r_correlation, d_decay, dist_gini) %>%
+  summarise(prop = mean(rent > hh_income, na.rm = T)) %>%
+  ggplot() +
+  aes(x = dist_gini, 
+      y = prop,
+      linetype = as.factor(d_decay)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income Gini",
+       y = "Proportion of rent-burdened Households",
+       linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As discussed above, because the distribution of rents depends on the distribution of incomes in the presence of market competition, rents become more unequal as income inequality increases. However, the relationship between rent and income remains unchanged: the richest pay higher rent in absolute terms but less in relative terms. However, when the distribution of the ratio between rent and income becomes more spread out as well. Higher income inequality corresponds with some households that need to pay much more for rent than they have disposable while more households pay much less than they earn at the same time. However, this phenomenon is limited to only a few households. Interestingly, when examining the proportion of households that pay more for rent than their disposable income on housing, the share of rent-burdened households even slightly decreases with increasing income inequality.
+
+In summary, higher income inequality leads to higher rent inequality, as rents are a mapping of desirability onto the income distribution. However, the spread out of the distributions does not imply lower affordability. Affluent households typically reside in high-rent units, while poor households often live in low-rent units. With an increase in inequality, more top earners are living in high-rent units, and more low earners are living in low-rent units. The very richest, however, tend to pay a smaller proportion of their income on rent, and the very poorest tend to overpay more in high-inequality conditions. The share of households affected by rent burdens even decreases.
+
+These results suggest that increasing inequality cannot account for the affordability crisis. The crucial condition for the decrease in affordability, as discussed by economists, is the lack of housing supply (Baum-Snow, 2023). Nevertheless, there might be a link between increasing income inequality and rising house prices if housing is a positional good, and the higher spending of the rich triggers spending cascades in middle-income households to "keep up with the Joneses" (Dewilde and Waitkus, 2024). However, such mechanisms of social comparison are absent from my model.
+
+
+## Housing Inequality
+
+```{r}
+ggplot(unit_data) +
+  aes(y = housing_quality, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Housing Quality", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = housing_quality,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Housing Quality",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_status,
+      y = housing_quality,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Status",
+       y = "Housing Quality",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+reg_quality <- unit_data %>%
+  nest_by(a_preferences, r_correlation, d_decay, dist_gini_f) %>%
+  mutate(trivariate = list(lm(data = data, housing_quality ~ hh_status + hh_income))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_quality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se,
+      colour = dist_gini_f) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI", colour = "Income Gini",
+       title = "Linear Regression of Housing Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The figures above show that housing quality also becomes more unequal with a more unequal income distribution. However, the general shape and considerable variation in the quality distributions are determined by the global parameters (see analysis of the main experiment). The richest tend to live in the highest-quality housing units when segregation is present. The same holds for housing quality by status: there is a positive relationship, such that a higher status is associated with better quality of the housing unit.
+
+To test for differences in housing quality by status independent of income, I calculate separate OLS regressions for each combination of global parameters, excluding the case where status and income are perfectly correlated due to multicollinearity. Because the different time points within the runs and the outcome of a household depend on the choices of other households, the standard errors are difficult to estimate accurately. In this case, I do not bother to correct for the non-independence of the observations, treating them as independent and identically distributed, which results in standard errors that are too small. As "compensation", I use a confidence level of 99.9%.
+
+After controlling for income, status has indeed a significantly positive association with housing quality when a_preferences is greater than 0. I interpret the inconsistent and small effects observed when a = 0 as null effects, even though the confidence intervals do not overlap the reference line in some cases. When a household with higher housing quality moves into a unit, it increases the average status of the neighbourhood. When households value neighbours' status (a > 0), this increases utility in the neighbourhood. A higher utility means that rent will become higher in the area. Because changes in neighbourhood rent lead landlords to invest, housing quality increases. The same also holds for the reverse direction, though: low-status households are a disamenity to the neighbourhood, and therefore, landlords do not invest in them. The size of the coefficient should increase as the neighbourhood becomes more important for household utility. However, in the case of no correlation between income and status and only social preferences, no stable neighbourhoods form, so the coefficient is lower.
+
+There are only marginal differences between levels of income inequality. The changes in the distribution of housing quality do not align perfectly with the changes in the income distribution, resulting in slightly different coefficients.
+
+
+## Neighborhood Inequality
+
+```{r}
+ggplot(unit_data) +
+  aes(y = ave_status, 
+      x = dist_gini_f,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Neighborhood Quality", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = ave_status,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Neighborhood Quality",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_status,
+      y = ave_status,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Status",
+       y = "Neighborhood Quality",
+       colour = "Income Gini", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+reg_nbquality <- unit_data %>%
+  nest_by(a_preferences, r_correlation, d_decay, dist_gini_f) %>%
+  mutate(trivariate = list(lm(data = data, ave_status ~ hh_status + hh_income))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_nbquality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se,
+      colour = dist_gini_f) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI", colour = "Income Gini",
+       title = "Linear Regression of Neighborhood Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+When considering the average status in a neighbourhood as a measure of the neighbourhood's quality, we see again that high-income and high-status households tend to live in the best neighbourhoods, and this finding remains unchanged regardless of the level of income inequality. The inequality in neighbourhood quality also increases income inequality. However, the increase is more pronounced, particularly in high segregation conditions. This is not surprising, as neighbourhood inequality is tightly linked to status segregation; thus, the interaction between income inequality and segregation is reflected here again. 
+
+To determine whether status has an effect on neighbourhood quality after controlling for income, I perform similar regressions to those in the previous section. As individual status is part of the neighbourhood average by design, there is always an effect of individual status on average neighbourhood status. Nonetheless, when income and status are correlated, we can indeed see that the coefficient increases as households value their neighbours more. This result suggests that there is a similar amenity effect for neighbourhood quality as for housing quality.
+
+
+## Residential Mobility
+
+```{r}
+indiv_data <- unit_data %>%
+  filter(!is.na(id)) %>%
+  arrange(sample_id, r_correlation, a_preferences, d_decay, dist_gini_f, hh_id, t) %>%
+  group_by(sample_id, r_correlation, a_preferences, d_decay, dist_gini_f, hh_id) %>%
+  summarise(prob_move_unit = mean(obj_id != Lag(obj_id), na.rm = TRUE),
+            prob_move_nb = mean(nb != Lag(nb), na.rm = TRUE),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status))
+
+ggplot(indiv_data) +
+  aes(x = dist_gini_f,
+      y = prob_move_unit,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income Gini", y = "Probability of Moving", fill = "decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_unit,
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving", colour = "Income Gini",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_unit,
+      linetype = as.factor(d_decay),
+      colour = dist_gini_f) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving", colour = "Income Gini",
+       shape = "d_decay", linetype = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The probability of moving decreases slightly with higher income inequality, particularly when housing quality is a concern for households; there are no further differences.
+
+
+# References
+
+Auspurg, Katrin, Andreas Schneck, and Thomas Hinz. 2019. “Closed Doors Everywhere? A Meta-Analysis of Field Experiments on Ethnic Discrimination in Rental Housing Markets.” Journal of Ethnic and Migration Studies 45(1):95–114. doi:10.1080/1369183X.2018.1489223.
+
+Baum-Snow, Nathaniel. 2023. “Constraints on City and Neighborhood Growth: The Central Role of Housing Supply.” Journal of Economic Perspectives 37(2):53–74. doi:10.1257/jep.37.2.53.
+
+Dewilde, Caroline, and Nora Waitkus. 2024. “Inequality and Housing.” Pp. 1–29 in Handbook of Labor, Human Resources and Population Economics, edited by K. F. Zimmermann. Cham: Springer International Publishing.
+
+Goldstein, Adam, and Orestes Hastings. 2019. “Buying In: Positional Competition, Schools, Income Inequality, and Housing Consumption.” Sociological Science 6:416–45. doi:10.15195/v6.a16.
+
+Owens, Ann. 2016. “Inequality in Children’s Contexts: Income Segregation of Households with and without Children.” American Sociological Review 81(3):549–74. doi:10.1177/0003122416642430.
+
+Reardon, Sean F., and Kendra Bischoff. 2011. “Income Inequality and Income Segregation.” American Journal of Sociology 116(4):1092–1153. doi: 10.1086/657114.
+
+Yavaş, Mustafa. 2019. “Dissecting Income Segregation: Impacts of Concentrated Affluence on Segregation of Poverty.” Journal of Mathematical Sociology 43(1):1–22. doi: 10.1080/0022250X.2018.1476858.

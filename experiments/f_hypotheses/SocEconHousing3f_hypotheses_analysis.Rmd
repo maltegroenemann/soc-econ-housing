@@ -1,0 +1,55 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIf: Testable Hypotheses"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(ggplot2)
+
+data_directory <- "./data/hypotheses/" # TODO change directory
+
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+```
+
+# Experiment Description
+
+## Experiment Description
+
+The main experiment and the robustness checks use global parameters that span the entire range possible. However, some values of these parameters are very unlikely to be realised in the real world. I therefore simulate a data set for hypothesis generation that only slightly varies the global parameters around realistic values. As households tend to value housing quality to a greater extent than neighbourhood quality, I use values of 0.2, 0.3 and 0.4 for the relative importance parameter $a$ in the utility function. Income and status also tend to be highly correlated, although not perfectly. I use correlation parameter values of 0.5, 0.6 and 0.7 (the correlation parameter tends to produce Pearson correlations between the two variables higher than the parameter value). And housing quality decays slowly over time, so I use decay parameter values of 0.95, 0.925 and 0.9.
+
+This selection of parameter values results in 27 combinations and each combination is run ten times, resulting in 270 independent simulation runs of 200 steps. With a grid size of 30 x 30, the raw output data amounts to 48.6 million observations of housing units and 24.3 million of these are analysed.
+
+
+## List of Hypotheses
+
+- Neighborhoods are more homogenous in housing quality (and rent?) than in income and status.
+- Cities are more segregated, the more income and status are correlated.
+- Cities are more segregated, the more housing quality matters to households.
+- Correlation and preferences interact in their relation to segregation.
+- Neighborhoods are more stable over time in more segregated cities.
+- More segregated cities have higher inequalities in housing quality and rent.
+- There is a decrease in marginal return of housing quality by income.
+- The more segregated the city, the less residentially mobile are the middle and high income households.
+- Ratio between rent and income between different levels of segregation?
+- The more important neighbors status is to households, the lower the housing quality of low status residents even when controlling for income.
+- The more segregated a city by income, the more concentrated are vacancies in the poorest and most rundown neighborhoods.
+- the more segregated a city, the stronger is the correlation between income and housing quality.
