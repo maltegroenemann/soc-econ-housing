@@ -17,9 +17,11 @@ The **root folder** of this repository contains:
 The **experiments** folder contains code and analysis files of all computational experiments. 
 
 As the data preparation is identical for all experiments, I have only one script for data preparation.
+
 - SocEconHousing2_dataprep.R
 
 Each computational experiment, the main experiment and the robustness checks, described in the Jupyter notebook in the root folder has a subfolder:
+
 - a_main: main analysis of the model and basis for graphics in the article
 - b_popdyn: effect of population dynamics
 - c_ineq: varies the level of income inequality in the simulations
@@ -28,6 +30,7 @@ Each computational experiment, the main experiment and the robustness checks, de
 - d_hypotheses: experiment only using reasonable parameters for hypothesis generation
 
 Each of these folders contains:
+
 - SocEconHousing1*_exp.py: a Python script that runs the computational experiments and outputs the raw simulation data. (in e, it is obviously a NetLogo file)
 - SocEconHousing3*_analysis.Rmd: a R Markdown that performs the analysis of the respective experiment.
 - SocEconHousing3*_analysis.html: This html file is probably the most important file in each folder. It contains all analyses including the interpretations of the graphics and tables. There is again a description of the respective experiment and a summary of the results from this experiment at the top.
@@ -38,6 +41,7 @@ The **images** folder contains all images imported into the article. Most are ba
 ## Availability of Simulation Data
 
 Due to large file sizes, I have not uploaded the simulation data (which are saved in a *data* folder in each experiment folder). They are saved as parquet files (NetLogo: the raw data are a CSV). They are eventually available in the future. If you want access, please reach out to me.
+
 - The paramaters dataset links each sample_id to the used values of global parameters. They are merged with the raw data in data preparation.
 - The raw unit data contain all variables concerning housing units and households occupying them.
 - The unit data disgard the burn-in period, contain some additional calculated variables and neighborhood averages.
