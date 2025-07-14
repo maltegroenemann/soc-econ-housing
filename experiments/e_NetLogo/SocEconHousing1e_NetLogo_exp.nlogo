@@ -57,7 +57,7 @@ end
 
 ; run the model for one tick
 to go
-  if ticks = 200 [ stop ]
+  if ticks = 500 [ stop ]
   popdyn
   demand
   supply
@@ -147,8 +147,8 @@ end
 GRAPHICS-WINDOW
 300
 25
-788
-514
+758
+484
 -1
 -1
 15.0
@@ -162,9 +162,9 @@ GRAPHICS-WINDOW
 1
 1
 0
-31
+29
 0
-31
+29
 1
 1
 1
@@ -180,7 +180,7 @@ r_correlation
 r_correlation
 0
 1
-0.7
+0.5
 0.1
 1
 NIL
@@ -246,7 +246,7 @@ a_utility
 a_utility
 0
 1
-0.4
+0.0
 0.1
 1
 NIL
@@ -286,7 +286,7 @@ d_decay
 d_decay
 0.5
 1
-0.95
+0.7
 0.05
 1
 NIL

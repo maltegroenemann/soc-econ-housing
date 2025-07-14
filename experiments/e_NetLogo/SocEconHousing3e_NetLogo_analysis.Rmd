@@ -38,21 +38,22 @@ This section loads required packages and loads the preprocessed simulation data.
 library(nanoparquet)
 library(dplyr)
 library(tidyr)
+library(broom)
 library(Hmisc)
 library(ggplot2)
 library(ggpubr)
 library(ggcorrplot)
-library(stargazer)
+library(modelsummary)
 ```
 
 ```{r unit_data}
-unit_data <- read_parquet("../data/unit_data.parquet")
+unit_data <- read_parquet("./data/unit_data.parquet")
 
-nb4_data <- read_parquet("../data/nb4_data.parquet")
-nb8_data <- read_parquet("../data/nb8_data.parquet")
+nb4_data <- read_parquet("./data/nb4_data.parquet")
+nb8_data <- read_parquet("./data/nb8_data.parquet")
 
-city4_data <- read_parquet("../data/city4_data.parquet")
-city8_data <- read_parquet("../data/city8_data.parquet")
+city4_data <- read_parquet("./data/city4_data.parquet")
+city8_data <- read_parquet("./data/city8_data.parquet")
 ```
 
 
@@ -62,8 +63,8 @@ city8_data <- read_parquet("../data/city8_data.parquet")
 
 ### 4x4 Neighborhoods
 
-```{r seg_4}
-city4_long <- city4_data %>%
+```{r seg_4, out.width="100%"}
+seg_long <- city4_data %>%
   select(-ends_with("gini")) %>%
   pivot_longer(cols = ends_with("seg"),
                cols_vary = "slowest",
@@ -75,56 +76,47 @@ city4_long <- city4_data %>%
          dimension = if_else(dimension == "rent_seg", "Rent", dimension),
          dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
 
-city4_long %>%
-  filter(d_decay == 0.95 & dimension != "Vacancy") %>%
+seg_long %>%
+  filter(dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, d_decay, dimension) %>%
+  summarise(segregation = mean(segregation)) %>%
   ggplot() +
-  aes(x = dimension,
+  aes(x = a_preferences,
       y = segregation,
-      fill = dimension) +
-  geom_bar(stat = "summary", fun.y = "mean") +
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
   facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "", y = "Reardon Index", fill = "",
-       title = "Residential Segregation, d = 0.95") +
-  scale_x_discrete(breaks = NULL) +
-  scale_fill_manual(values = label_seg) +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-city4_long %>%
-  filter(d_decay == 0.8 & dimension != "Vacancy") %>%
-  ggplot() +
-  aes(x = dimension,
-      y = segregation,
-      fill = dimension) +
-  geom_bar(stat = "summary", fun.y = "mean") +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "", y = "Reardon Index", fill = "",
-       title = "Residential Segregation, d = 0.8") +
-  scale_x_discrete(breaks = NULL) +
-  scale_fill_manual(values = label_seg) +
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(title = "Segregation, 4x4 Neighborhoods", y = "H^R") +
   theme_bw() +
   theme(legend.position = "bottom")
 ```
 
-In most circumstances, the model produces a considerable level of residential segregation by income, status as well as housing quality and rent. It is noteworthy that housing quality and rent are most unequally placed in space. Status is always least segregated and even not segregated (with some small index value due to random chance) when status is not correlated with income.
+For the most part, the models show very similar results independent of the programming language, in this case, NetLogo and Python (see analysis of the main experiment). However, there is one condition in which the two analyses do not match: 
 
-This is particularly surprising in the case where households only value neighbors' status. Generally, with these preferences, segregation is lowest compared to the other preferences and lowest over all when income and status are uncorrelated. This can be interpreted as follows: when households want to live next to high status neighbors, they will move next to them if they can. Particularly rich households have more opportunities to move into desirable units as they can afford the desirable and therefore more expensive units. When rents in the neighborhood increase, landlords invest into housing quality, although it does not matter to the households in this case. But the high status households are not necessarily rich themselves, so they cannot afford staying in these desirable units and need to move away. This makes the neighborhood less attractive and the neighborhood they move to more attractive. The result is a "chase game" where the rich follow the popular and no stable segregated neighborhoods form. Results on neighborhood stability and residential mobility support this interpretation (see below / other analyses). Only if status and income are correlated, high income and high status neighborhoods can form which prevent others from moving in via price and low income and low status households are forced to live next to each other. The "only status" column is very similar in its working to the model by Benard and Willer (2007) when prices are fully endogenous.
+In the NetLogo model, no stable segregated neighborhoods form (see also results on neighborhood stability) when housing quality decays fast, and households value only housing quality. In this condition, rich households frequently move to another housing unit with better housing quality than their current location, even after one period of no investment.
 
-In contrast, when households only value housing quality and housing quality decays slowly (d = 0.95), income and status segregation emerge purely as a consequence of the spatially interdependent decision rule of the landlords. And status segregation only emerges when income and status are correlated. Households sort into neighborhoods as a byproduct. Good quality housing units are the most desirable, therefore rich households will go for these and can price out other households. Because landlords react to changes in rent in the neighborhood, investing into housing quality is spatially interdependent. Therefore, distinct neighborhoods form where landlords invest into their housing quality, attracting rich households. On the other hand, neighborhoods losing affluent households will not invest and therefore housing quality declines. Poor households need to move to these units and neighborhoods as they cannot afford the better ones. Because housing quality has a lot of inertia, the neighborhoods with the high housing quality remain the neighborhoods with high housing quality and as a result the neighborhoods with high rents and high incomes. If housing quality decays fast however (d = 0.8), rich households frequently move as another housing unit often has better housing quality than their current location after a period of no investment. No stable segregated neighborhoods form (see results on neighborhood stability). Housing quality inertia is therefore important to explain why stable neighborhoods form when households only value housing quality.
+In the Python model, neighborhoods stay surprisingly stable. The reason is a peculiar phenomenon where patterns in housing quality (and rent) oscillate. At every time step, the previously higher-quality units decay as their quality exceeds the rent average. In contrast, the lower-quality units are invested in because their quality is below the average rent. Due to these oscillations, the neighborhood averages are relatively stable over time, and they are different between neighborhoods, i.e., segregated.
 
-The empirically most plausible case is when households value both housing quality and neighborhood status and income and status are correlated. In the fast decay condition, this is even the condition with the highest segregation indices as both mechanisms described above (spatial interdependence via (1) landlords investing in housing quality and (2) households seeking high status neighborhoods) reinforce and stabilize each other. The inferred dynamics fit well with the reviewed descriptions of neighborhood change: when a neighborhoods becomes more desirable as high status households move there or landlords invest in housing quality, rents rise and displace poor households. This frees space and additionally increases average status in the neighborhood as low income households tend to be low status. The new arrivals in the neighborhood then tend to be even richer and more desirable neighbors, and the cycle repeats until equilibrium when no new residents with sufficient income can be attracted anymore. Conversely, when a neighborhood looses residents with high incomes and/or status to other neighborhoods, rents in that neighborhood decrease. Landlords do not invest and housing quality decreases as well. The lower rents attract lower income households for whom it is still a good neighborhood though. Yet attractivity with lower status and no investments into housing quality may continue to fall. In equilibrium, a segregated state with a stable hierarchy of neighborhoods forms.
+These observations have been made from the animated versions of the model, specifically from the Python code in the Jupyter Notebook. These images of the respective GUIs show the differences between the models in realistic conditions, but with a fast decay (low d). In the NetLogo GUI, dots represent households, with larger sizes indicating higher income and brighter shades indicating higher status. The grid is coloured by housing quality, with higher housing quality being lighter in shade. Rent is not depicted here. In agentpy, yellow represents high values and dark blue low values.
+
+![Python GUI](../../images/GUI_agentpy_fastdecay.png)
+
+![NetLogo GUI](../../images/GUI_NetLogo_fastdecay.png){width=50% height=50%}
+
+
+I do not have a good explanation for these differences between models. However, I assume that the scheduling "under the hood" is different in the different modeling frameworks. As the pattern in the agentpy model is very particular and highly unrealistic in the real world, I am tempted to give the NetLogo model higher credibility in this instance. Substantially speaking, housing quality inertia is important to explain why stable neighborhoods form when households only value housing quality. If quality decays fast, even after one period of disinvestment, another neighborhood likely provides a higher utility for households, and they move.
+
+The empirically most plausible case is when households value both housing quality and neighborhood status and income and status are correlated. In the fast decay condition, this is even the condition with the highest segregation indices as both mechanisms described above (spatial interdependence via (1) landlords investing in housing quality and (2) households seeking high status neighborhoods) reinforce and stabilize each other. In this model, the combination of the two mechanisms has a much more visible effect than in the main analysis, due to the difference in model behavior described above.
 
 
 ### 8x8 Neighborhoods
 
-```{r seg_8}
-city8_long <- city8_data %>%
+```{r seg_8, out.width="100%"}
+seg_long <- city8_data %>%
   select(-ends_with("gini")) %>%
   pivot_longer(cols = ends_with("seg"),
                cols_vary = "slowest",
@@ -136,39 +128,21 @@ city8_long <- city8_data %>%
          dimension = if_else(dimension == "rent_seg", "Rent", dimension),
          dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
 
-city8_long %>%
-  filter(d_decay == 0.95 & dimension != "Vacancy") %>%
+seg_long %>%
+  filter(dimension != "Vacancy") %>%
+  group_by(a_preferences, r_correlation, d_decay, dimension) %>%
+  summarise(segregation = mean(segregation)) %>%
   ggplot() +
-  aes(x = dimension,
+  aes(x = a_preferences,
       y = segregation,
-      fill = dimension) +
-  geom_bar(stat = "summary", fun.y = "mean") +
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
   facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "", y = "Reardon Index", fill = "",
-       title = "Residential Segregation, d = 0.95") +
-  scale_x_discrete(breaks = NULL) +
-  scale_fill_manual(values = label_seg) +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-city8_long %>%
-  filter(d_decay == 0.8 & dimension != "Vacancy") %>%
-  ggplot() +
-  aes(x = dimension,
-      y = segregation,
-      fill = dimension) +
-  geom_bar(stat = "summary", fun.y = "mean") +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "", y = "Reardon Index", fill = "",
-       title = "Residential Segregation, d = 0.8") +
-  scale_x_discrete(breaks = NULL) +
-  scale_fill_manual(values = label_seg) +
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(title = "Segregation, 8x8 Neighborhoods", y = "H^R") +
   theme_bw() +
   theme(legend.position = "bottom")
 ```
@@ -953,26 +927,30 @@ unit_data %>%
 The binned scatterplots also show that there is a positive relationship between status and housing quality. But as status and income are correlated, this is to be expected. Are low status households living in worse housing units after controlling for their income? To answer this, I perform separate regressions of quality on status for the different parameter conditions controlling or income. Perfect correlation is left out because of collinearity.
 
 ```{r reg_quality}
-stargazer(lm(data = subset(unit_data, time == 150 & a_preferences == 0 & r_correlation == 0),
-             quality ~ income + status), 
-          lm(data = subset(unit_data, time == 150 & a_preferences == 0.5 & r_correlation == 0),
-             quality ~ income + status), 
-          lm(data = subset(unit_data, time == 150 & a_preferences == 1 & r_correlation == 0),
-             quality ~ income + status),  
-          lm(data = subset(unit_data, time == 150 & a_preferences == 0 & r_correlation == 0.5),
-             quality ~ income + status),
-          lm(data = subset(unit_data, time == 150 & a_preferences == 0.5 & r_correlation == 0.5),
-             quality ~ income + status),
-          lm(data = subset(unit_data, time == 150 & a_preferences == 1 & r_correlation == 0.5),
-             quality ~ income + status),
-          title = "Linear Regression on Housing Quality",
-          style = "asr",
-          type = "text",
-          column.sep.width = "1pt",
-          column.labels = c("a=0,r=0", "a=0.5,r=0", "a=1,r=0", "a=0,r=0.5", "a=0.5,r=0.5", "a=1,r=0.5"),
-          dep.var.labels.include = FALSE,
-          covariate.labels = c("Income", "Status"),
-          omit.stat=c("f", "ser"))
+reg_quality <- unit_data %>%
+  nest_by(a_preferences, r_correlation, d_decay) %>%
+  mutate(trivariate = list(lm(data = data, quality ~ income + status))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_quality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI",
+       title = "Linear Regression of Housing Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
 ```
 
 Indeed, status has a significant positive association with housing quality after controlling for income, but only when status matters for residential satisfaction. The reason is that low status households themselves decrease the desirability and subsequently rents of the neighborhood they live in. As landlords invest based on average rent in the neighborhood, housing quality is lower in neighborhoods with low status households compared to neighborhoods with similar incomes but higher status.
@@ -1035,7 +1013,8 @@ indiv_data <- unit_data %>%
             prob_move_nb4 = mean(nb_4 != Lag(nb_4), na.rm = TRUE),
             prob_move_nb8 = mean(nb_8 != Lag(nb_8), na.rm = TRUE),
             income = mean(income),
-            status = mean(status))
+            status = mean(status)) %>%
+  ungroup()
 
 ggplot(indiv_data) +
   aes(x = income,
@@ -1068,26 +1047,30 @@ The results show that usually high income households rarely move while poor hous
 
 
 ```{r reg_mob}
-stargazer(lm(data = subset(indiv_data, a_preferences == 0 & r_correlation == 0),
-             prob_move_unit ~ income + status), 
-          lm(data = subset(indiv_data, a_preferences == 0.5 & r_correlation == 0),
-             prob_move_unit ~ income + status), 
-          lm(data = subset(indiv_data, a_preferences == 1 & r_correlation == 0),
-             prob_move_unit ~ income + status),  
-          lm(data = subset(indiv_data, a_preferences == 0 & r_correlation == 0.5),
-             prob_move_unit ~ income + status),
-          lm(data = subset(indiv_data, a_preferences == 0.5 & r_correlation == 0.5),
-             prob_move_unit ~ income + status),
-          lm(data = subset(indiv_data, a_preferences == 1 & r_correlation == 0.5),
-             prob_move_unit ~ income + status),
-          title = "Linear Regression on the Probability of Moving",
-          style = "asr",
-          type = "text",
-          column.sep.width = "1pt",
-          column.labels = c("a=0,r=0", "a=0.5,r=0", "a=1,r=0", "a=0,r=0.5", "a=0.5,r=0.5", "a=1,r=0.5"),
-          dep.var.labels.include = FALSE,
-          covariate.labels = c("Income", "Status"),
-          omit.stat=c("f", "ser"))
+reg_quality <- indiv_data %>%
+  nest_by(a_preferences, r_correlation, d_decay) %>%
+  mutate(trivariate = list(lm(data = data, prob_move_unit ~ income + status))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_quality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI",
+       title = "Linear Regression of Housing Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
 ```
 
 The pattern of residential mobility follows closely the pattern by income, except in the "chase game" conditions. To control for the correlation of status and income, I again use trivariate regressions. When only housing quality matters and income and sttus are uncorrelated, there is no relationship between status and residential mobility. When status matters and there is no correlation, a higher status is positively associated with residential mobility as high status individuals are constantly followed by rich households but displaced by rent increased. This chase game explains the positive association of both income and status with residential mobility. The empirically most plausible cases where neighborhood status matters and there is a correlation, income and status each have an independent negative association with residential mobility. As the plots show that high income and status households barely move, this implies that it is lower income and lower status tat have a higher residential mobility. So, low status households have a greater housing security even after controlling for income. As they also have higher rent burdens, this housing insecurity is likely involuntary.
