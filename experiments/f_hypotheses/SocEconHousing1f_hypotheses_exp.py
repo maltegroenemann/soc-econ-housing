@@ -202,7 +202,7 @@ parameters = dict({
     'size': 30,
     'density': 0.85,
     'vision': 1,
-    'distribution': 2,
+    'distribution': ap.Values(1.5, 2, 2.5),
     'turnover': 0.02,
     'steps': 200,
 })

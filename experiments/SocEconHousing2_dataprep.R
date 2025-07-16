@@ -32,8 +32,8 @@ library(DescTools)
 #data_directory <- "./main/data/"
 #data_directory <- "./popdyn/data/"
 #data_directory <- "./ineq/data/"
-data_directory <- "./vision/data/"
-#data_directory <- "./hypotheses/data/"
+#data_directory <- "./vision/data/"
+data_directory <- "./data/hypotheses/"
 # ------------------------------------------------------------------------------
 
 # t from 1 to t_min is disgarded as burn-in, 100 for robustness checks, 400 for main experiment
