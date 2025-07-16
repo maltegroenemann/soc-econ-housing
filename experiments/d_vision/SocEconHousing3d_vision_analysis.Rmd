@@ -22,7 +22,7 @@ library(tidyr)
 library(Hmisc)
 library(ggplot2)
 
-data_directory <- "data/" # TODO change directory
+data_directory <- "./data/vision/" # TODO change directory
 
 city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
 nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
@@ -37,7 +37,7 @@ In their paper, Laurie and Jaggi (2003) have established that in categorical seg
 
 Before, I have used a Moore neighborhood of distance 1, which refers to the 8 bordering (including diagonally) cells. Using the vision parameter, I can increase this distance. I vary it between 1 (8 neighbors), 2 (24 neighbors) and 3 (48 neighbors). The model simulates a grid of 30x30 and uses 3 x 3 x 2 = 18 levels of the initial parameters and additionally the 3 levels of vision just discussed. The model repeats every combination 10 times, so the experiment consists of 18 x 3 x 10 = 540 runs of 200 steps. The output results in 30 x 30 x 540 x 200 = 97.2 million observations of housing units. The first 100 observations are deletd as burn-in.
 
-The empirical analyses of the scale of segregation have only looked at segregation by categorical measures (most commonly race). I therefore need different methods to apply these concept to continuous variables. I will follow the idea of Reardon et al (2008) which create overlapping ego-neighborhoods of varying radii around the focal household to measure segregation at different scales. HR or R2 or H as segregation measure? TBC
+I will follow the implementation of Reardon et al (2008) which create overlapping ego-neighborhoods of varying radii around the focal household to measure segregation at different scales. Existing studies on the scale of segregation typically considered racial/ethnic segregation. To my knowledge, only Reardon and Bischoff (2011) have analysed income segregation at different scales. They find that "upper-income households are much more segregated at a large geographic scale than lower-income households. For high-income households, 60% or more of segregation patterns are due to macro-scale segregation, presumably the concentration of high-income households in wealthy suburban and exurban areas. For low-income households, 40% or less of segregation patterns are due to macro-scale segregation; this implies that the poor are less concentrated spatially than the wealthy in most metropolitan areas" (p. 1125). They also find that the effect of income inequality and income segregation is almost exclusively driven by the increasing macro-scale segregation of affluent households.
 
 
 ## Results Summary
@@ -105,6 +105,37 @@ seg_long %>%
 
 ```
 
+
+## Inequality
+
+```{r}
+ggplot(city_data) +
+  aes(x = as.factor(vision),
+      y = rent_gini,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Rent Inequality",
+       x = "vision", y = "Gini index", fill  = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(city_data) +
+  aes(x = as.factor(vision),
+      y = quality_gini,
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Inequality in Housing Quality",
+       x = "vision", y = "Gini index", fill  = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
 # Neighborhood Level
 
 ## Income and Status
@@ -161,6 +192,7 @@ ggplot(nb_data) +
   theme_bw() +
   theme(legend.position = "bottom")
 ```
+
 ## Neighborhood Stability
 
 When the definition of neighborhood in households utility calculation and rent setting by landlords increases, moves from single households should present less of a shock. It is therefore reasonable to expect that neighborhood stability increases with vision.
@@ -278,6 +310,241 @@ ggplot(nb_data) +
   theme(legend.position = "bottom")
 ```
 
+
+# Individual Level
+
+## Rent
+
+### Rent and Income
+
+```{r}
+ggplot(unit_data) +
+  aes(y = rent, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Rent", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(y = log(rent_to_income), 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  geom_hline(yintercept = 1, 
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Log(Rent / Income)", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = rent,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Rent",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = log(rent_to_income),
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 1, colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Log(Rent / Income)",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>% 
+  group_by(a_preferences, r_correlation, d_decay, vision) %>%
+  summarise(prop = mean(rent > hh_income, na.rm = T)) %>%
+  ggplot() +
+  aes(x = vision, 
+      y = prop,
+      linetype = as.factor(d_decay)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "vision",
+       y = "Proportion of rent-burdened Households",
+       linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Housing Inequality
+
+```{r}
+ggplot(unit_data) +
+  aes(y = housing_quality, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Housing Quality", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = housing_quality,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Housing Quality",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_status,
+      y = housing_quality,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Status",
+       y = "Housing Quality",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+reg_quality <- unit_data %>%
+  nest_by(a_preferences, r_correlation, d_decay, as.factor(vision)) %>%
+  mutate(trivariate = list(lm(data = data, housing_quality ~ hh_status + hh_income))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_quality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se,
+      colour = as.factor(vision)) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI", colour = "vision",
+       title = "Linear Regression of Housing Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+## Neighborhood Inequality
+
+```{r}
+ggplot(unit_data) +
+  aes(y = ave_status, 
+      x = as.factor(vision),
+      fill = as.factor(d_decay)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "Neighborhood Quality", fill = "d_decay", x = "Gini of the Income Distribution") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_income,
+      y = ave_status,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Neighborhood Quality",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(unit_data) +
+  aes(x = hh_status,
+      y = ave_status,
+      shape = as.factor(d_decay),
+      linetype = as.factor(d_decay),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Status",
+       y = "Neighborhood Quality",
+       colour = "vision", linetype = "d_decay", shape = "d_decay") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+reg_nbquality <- unit_data %>%
+  nest_by(a_preferences, r_correlation, d_decay, as.factor(vision)) %>%
+  mutate(trivariate = list(lm(data = data, ave_status ~ hh_status + hh_income))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_nbquality) +
+  aes(x = as.factor(a_preferences),
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se,
+      colour = as.factor(vision)) +
+  geom_errorbar(size = 2, width = 0, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "darkgrey") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(d_decay), 
+             labeller = label_both) +
+  labs(x = "a_preferences", y = "Coefficient of Status w. 99.9% CI", colour = "vision",
+       title = "Linear Regression of Neighborhood Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
 # Residential Mobility
 
 ```{r}
@@ -341,5 +608,7 @@ Laurie, Alexander J., and Narendra K. Jaggi. 2003. “Role of ‘Vision’ in Ne
 Lee, Barrett A., Sean F. Reardon, Glenn Firebaugh, Chad R. Farrell, Stephen A. Matthews, and David O’Sullivan. 2008. “Beyond the Census Tract: Patterns and Determinants of Racial Segregation at Multiple Geographic Scales.” American Sociological Review 73(5):766–91. doi:10.1177/000312240807300504.
 
 Östh, John, William A. V. Clark, and Bo Malmberg. 2015. “Measuring the Scale of Segregation Using K-Nearest Neighbor Aggregates.” Geographical Analysis 47(1):34–49. doi:10.1111/gean.12053.
+
+Reardon, Sean F., and Kendra Bischoff. 2011. “Income Inequality and Income Segregation.” American Journal of Sociology 116(4):1092–1153. doi: 10.1086/657114.
 
 Reardon, Sean F., Stephen A. Matthews, David O’Sullivan, Barrett A. Lee, Glenn Firebaugh, Chad R. Farrell, and Kendra Bischoff. 2008. “The Geographic Scale of Metropolitan Racial Segregation.” Demography 45(3):489–514. doi:10.1353/dem.0.0019.

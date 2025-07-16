@@ -22,26 +22,21 @@ label_d <- c(`0.8` = "d = 0.8", `0.95` = "d = 0.95")
 label_seg <- c("Income" = "#E69F00", "Quality" = "#56B4E9", "Status" = "#009E73", "Rent" = "#CC79A7")
 ```
 
-This document analyses data generated from the NetLogo implementation of the model. This serves to make sure that there are no (major) errors in the Python scripts for the model. The data analysed here are based on a simulation experiment with a 32x32 grid, a 0.85 population density, a Beta(2, 5) distribution for income and status and no population dynamics. I vary the correlation and preferences preferences with 3 levels (0, 0.5, 1) and the decay parameter with 2 levels (0.95, 0.8). Every of the 9 parameter combinations are repeated 10 times, therefore I simulate 180 runs that go for 200 steps of which I disgard the first 100 as burn-in. 32 x 32 x 180 runs x 100 analysed steps result in about 18 million observations of housing units. I only analyse unit data here.
-
-Additionally, I check whether the size of neighborhoods makes a difference in the analysis. So I create 4x4 and 8x8 neighborhoods to compare the results.
-
-The data preparation was performed on the Helix HPC but the analysis in this notebook is executeable on local hardware (16GB RAM, 8 cores i5).
 
 # Experiment Description
 
 ## Data
 
-This section loads required packages and loads the preprocessed simulation data. For the data preparation code, see the separate file. The script does the following: The list output of NetLogo creates a column for each observation at one point in time. But as I export information for all housing units (patches), I need to transform the data to a long format where each row represents one housing unit at one point in time. I then delete information about a renters' (turtles') income and status when there is no turtle in a housing unit. These values are not updated in NetLogo if there is no agent on the patch. I then create neighborhoods of 4x4 and of 8x8 and summarize their characteristics and calculate segregation measures.
+This document analyses data generated from the NetLogo implementation of the model. This serves to make sure that there are no (major) errors in the Python scripts for the model. The data analysed here are based on a simulation experiment with a 32x32 grid, a 0.85 population density, a Beta(2, 5) distribution for income and status and no population dynamics. I vary the correlation and preferences preferences with 3 levels (0, 0.5, 1) and the decay parameter with 2 levels (0.95, 0.8). Every of the 9 parameter combinations are repeated 10 times, therefore I simulate 180 runs that go for 200 steps of which I disgard the first 100 as burn-in. 32 x 32 x 180 runs x 100 analysed steps result in about 18 million observations of housing units. I only analyse unit data here and use 4x4 neighborhoods for aggregate measures.
+
+The data preparation was performed on the Helix HPC but the analysis in this notebook is executeable on local hardware (16GB RAM, 8 cores i5).
 
 
 ## Summary of Results
 
 Overall, the model as implemented in NetLogo is able generate considerable levels of residential segregation under certain parameter conditions and reproduces many stylized facts in urban and neighborhood research as well as inequalities documented in the literature on housing and residential mobility. Crucially, under the empirically most plausible case that income and status of households are correlated and that households value both neighborhood status and housing quality as well as housing decaying only slowly without investments, the model consistently reproduces stylized facts. Indeed, these parameter conditions are the only condition where the stylized facts in all analyses match empirical observations.
 
-When comparing results based on 4x4 and 8x8 neighborhoods, the results are qualitatively identical. The segregation levels are slightly lower and there are fewer anomalies though as the larger neighborhoods are less fine-grained and average over more units and therefore smooth out random changes.
-
-In sum, the model seems robust against the choice of programming language and size of neighborhood.
+In sum, the model seems robust against the choice of programming language.
 
 
 ```{r packages}
@@ -57,21 +52,16 @@ library(modelsummary)
 ```
 
 ```{r unit_data}
+# load data -> raw CSV output has already been processed and saved to parquet files similar to the other experiments
 unit_data <- read_parquet("./data/unit_data.parquet")
-
 nb4_data <- read_parquet("./data/nb4_data.parquet")
-nb8_data <- read_parquet("./data/nb8_data.parquet")
-
 city4_data <- read_parquet("./data/city4_data.parquet")
-city8_data <- read_parquet("./data/city8_data.parquet")
 ```
 
 
 # City-Level
 
 ## Segregation 
-
-### 4x4 Neighborhoods
 
 ```{r seg_4, out.width="100%"}
 seg_long <- city4_data %>%
@@ -121,44 +111,6 @@ These observations have been made from the animated versions of the model, speci
 I do not have a good explanation for these differences between models. However, I assume that the scheduling "under the hood" is different in the different modeling frameworks. As the pattern in the agentpy model is very particular and highly unrealistic in the real world, I am tempted to give the NetLogo model higher credibility in this instance. Substantially speaking, housing quality inertia is important to explain why stable neighborhoods form when households only value housing quality. If quality decays fast, even after one period of disinvestment, another neighborhood likely provides a higher utility for households, and they move.
 
 The empirically most plausible case is when households value both housing quality and neighborhood status and income and status are correlated. In the fast decay condition, this is even the condition with the highest segregation indices as both mechanisms described above (spatial interdependence via (1) landlords investing in housing quality and (2) households seeking high status neighborhoods) reinforce and stabilize each other. In this model, the combination of the two mechanisms has a much more visible effect than in the main analysis, due to the difference in model behavior described above.
-
-
-### 8x8 Neighborhoods
-
-```{r seg_8, out.width="100%"}
-seg_long <- city8_data %>%
-  select(-ends_with("gini")) %>%
-  pivot_longer(cols = ends_with("seg"),
-               cols_vary = "slowest",
-               names_to = "dimension",
-               values_to = "segregation") %>%
-  mutate(dimension = if_else(dimension == "inc_seg", "Income", dimension),
-         dimension = if_else(dimension == "status_seg", "Status", dimension),
-         dimension = if_else(dimension == "quality_seg", "Quality", dimension),
-         dimension = if_else(dimension == "rent_seg", "Rent", dimension),
-         dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
-
-seg_long %>%
-  filter(dimension != "Vacancy") %>%
-  group_by(a_preferences, r_correlation, d_decay, dimension) %>%
-  summarise(segregation = mean(segregation)) %>%
-  ggplot() +
-  aes(x = a_preferences,
-      y = segregation,
-      colour = dimension,
-      group = dimension) +
-  geom_point() +
-  geom_line() +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(d_decay), 
-             labeller = label_both) +
-  labs(title = "Segregation, 8x8 Neighborhoods", y = "H^R") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-```
-
-The substantive conclusions are unchanged when considering 8x8 neighborhoods even though the levels of segregation in the indices is reduced. However, this is to be expected because with less and larger neighborhoods, the proportion of variance within neighborhoods relative to variance between neighborhoods needs to increase, see Reardon et al (2008) and Elbers and Gruijters (2024).
-
 
 ## Inequality
 
@@ -216,8 +168,6 @@ Only with both preferences/status preferences and a correlation between income a
 
 # Neighborhood Level
 
-### 4x4 Neighborhoods
-
 ```{r nb4_descr}
 nb4_data %>% 
   filter(time == 150) %>%
@@ -246,45 +196,12 @@ nb4_data %>%
   theme_bw()
 ```
 
-
-### 8x8 Neighborhoods
-
-```{r nb8_descr}
-nb8_data %>% 
-  filter(time == 150) %>%
-  ggplot() +
-  aes(x = ave_inc, 
-      fill = as.factor(d_decay)) +
-  geom_histogram(alpha = 0.6, position = 'identity') +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(title = "t = 150", fill = "decay", x = "Average Neighborhood Income") +
-  theme_bw()
-
-nb8_data %>% 
-  filter(time == 150) %>%
-  ggplot() +
-  aes(x = ave_status,
-      fill = as.factor(d_decay)) +
-  geom_histogram(alpha = 0.6, position = 'identity') +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(title = "t = 150", fill = "decay", x = "Average Neighborhood Status") +
-  theme_bw()
-```
-
-These distributions are just a different way to visualize residential segregation by income and status as they have been discussed before. Essentially, segregation is a variance decomposition. The total variance of income and status is separated into the variance within neighborhoods and the variance between neighborhoods. Segregation indices (more or less) present the proportion of between neighborhood variance relative to the total variance. If all variance is between neighborhoods, a city is fully segregated and the neighborhoods are totally homogenous (Reardon et al 2006: 9f). In this depiction, if the neighborhood averages cover the entire range of the income/status distribution, the neighborhoods are segregated. If the neighborhoods are not segregated, they should form a normal distribution around their mean (CLT again). In the 8x8 neighborhoods, the spread in averages is lower as the spread from the true mean (essentially: standard errors) decrease with the square root of n and the 8x8 neighborhoods have a higher population than the 4x4, obviously.
+These distributions are just a different way to visualize residential segregation by income and status as they have been discussed before. Essentially, segregation is a variance decomposition. The total variance of income and status is separated into the variance within neighborhoods and the variance between neighborhoods. Segregation indices (more or less) present the proportion of between neighborhood variance relative to the total variance. If all variance is between neighborhoods, a city is fully segregated and the neighborhoods are totally homogenous (Reardon et al 2006: 9f). In this depiction, if the neighborhood averages cover the entire range of the income/status distribution, the neighborhoods are segregated. If the neighborhoods are not segregated, they should form a normal distribution around their mean (CLT again). 
 
 
 ## Housing Quality and Rent
 
 The remark above applies here as well: these results are identical to the results from the segregation indices.
-
-### 4x4 Neighborhoods
 
 ```{r nb4_hists}
 nb4_data %>% 
@@ -314,40 +231,8 @@ nb4_data %>%
   theme_bw()
 ```
 
-### 8x8 Neighborhoods
-
-```{r nb8_hists}
-nb8_data %>% 
-  filter(time == 150) %>%
-  ggplot() +
-  aes(x = ave_quality, 
-      fill = as.factor(d_decay)) +
-  geom_histogram(alpha = 0.6, position = 'identity') +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(title = "t = 150", fill = "decay", x = "Average Neighborhood Housing Quality") +
-  theme_bw()
-
-nb8_data %>% 
-  filter(time == 150) %>%
-  ggplot() +
-  aes(x = ave_rent, 
-      fill = as.factor(d_decay)) +
-  geom_histogram(alpha = 0.6, position = 'identity') +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(title = "t = 150", fill = "decay", x = "Average Neighborhood Rent") +
-  theme_bw()
-```
-
-
 ## Neighborhood Stability
 
-### 4x4 Neighborhoods
 
 ```{r nb4_stability}
 stability4_data <- nb4_data %>%
@@ -440,91 +325,6 @@ Similarly, when households value only housing quality but quality decays fast, h
 
 In the other conditions, neighborhoods are very stable over time. When a city is more segregated, the neighborhoods remain in a stable segregated state. There are only a few outliers when status and income are perfectly correlated, for which I have no explanation, but they do not affect the LOESS curve much.
 
-### 8x8 Neighborhoods
-
-```{r nb8_stability}
-stability8_data <- nb8_data %>%
-  group_by(run, r_correlation, a_preferences, d_decay, nb_8) %>%
-  summarise(ave_rank_inc = mean(rank_inc),
-            sd_rank_inc = sd(rank_inc),
-            ave_rank_status = mean(rank_status),
-            sd_rank_status = sd(rank_status),
-            ave_rank_quality = mean(rank_quality),
-            sd_rank_quality = sd(rank_quality),
-            ave_rank_rent = mean(rank_rent),
-            sd_rank_rent = sd(rank_rent))
-
-ggplot(stability8_data) +
-  aes(x = ave_rank_inc,
-      y = sd_rank_inc,
-      colour = as.factor(d_decay)) +
-  geom_point(size = 0.1) +
-  geom_smooth() +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "Mean(Rank)",
-       y = "SD(Rank)",
-       title = "Neighborhood Stability by Income",
-       colour = "decay") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-ggplot(stability8_data) +
-  aes(x = ave_rank_status,
-      y = sd_rank_status,
-      colour = as.factor(d_decay)) +
-  geom_point(size = 0.1) +
-  geom_smooth() +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "Mean(Rank)",
-       y = "SD(Rank)",
-       title = "Neighborhood Stability by Status",
-       colour = "decay") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-ggplot(stability8_data) +
-  aes(x = ave_rank_quality,
-      y = sd_rank_quality,
-      colour = as.factor(d_decay)) +
-  geom_point(size = 0.1) +
-  geom_smooth() +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "Mean(Rank)",
-       y = "SD(Rank)",
-       title = "Neighborhood Stability by Quality",
-       colour = "decay") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-ggplot(stability8_data) +
-  aes(x = ave_rank_rent,
-      y = sd_rank_rent,
-      colour = as.factor(d_decay)) +
-  geom_point(size = 0.1) +
-  geom_smooth() +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "Mean(Rank)",
-       y = "SD(Rank)",
-       title = "Neighborhood Stability by Rent",
-       colour = "decay") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-```
-
-The results for the 8x8 neighborhoods largely reflect the results from the 4x4 neighborhoods. Although it is difficult to assess, as the variability of ranks has a different meaning because there are less ranks, the lack of the anomalies in the perfect correlation condition would suggest that neighborhoods are more stable when larger units are used.
-
 # Vacant Housing
 
 In the agent-based models, I set the vacancy rate to 1 - 0.85 = 0.15 (here with random differences). But how are these empty units distributed over the neighborhoods? 
@@ -541,21 +341,6 @@ nb4_data %>%
              labeller = labeller(.rows = label_r, 
                                  .cols = label_a)) +
   labs(title = "t = 150, 4x4 Neighborhoods", fill = "decay",
-       x = "Average Neighborhood Vacancy Rate") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-nb8_data %>% 
-  filter(time == 150) %>%
-  ggplot() +
-  aes(x = 1 - ave_vacant,
-      fill = as.factor(d_decay)) +
-  geom_histogram(alpha = 0.6, position = 'identity') +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(title = "t = 150, 8x8 Neighborhoods", fill = "decay",
        x = "Average Neighborhood Vacancy Rate") +
   theme_bw() +
   theme(legend.position = "bottom")
@@ -581,21 +366,6 @@ ggplot(city4_data) +
   scale_x_discrete(breaks = NULL) +
   theme_bw() +
   theme(legend.position = "bottom")
-
-ggplot(city8_data) +
-  aes(x = as.factor(d_decay),
-      y = vacancy_seg,
-      fill = as.factor(d_decay)) +
-  geom_bar(stat = "summary", fun.y = "mean") +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "", y = "Theil Index", fill = "decay",
-       title = "Vacancy Segregation, 8x8 Neighborhoods") +
-  scale_x_discrete(breaks = NULL) +
-  theme_bw() +
-  theme(legend.position = "bottom")
 ```
 
 And as we can see, in many conditions are the vacant housing units spatially clustered, typically in the conditions where segregation occurs in other dimensions as well. This has already been revealed by the correlation plot previously where vacancy segregation has very high correlations with the other segregation dimensions (except status as it is not always segregated).
@@ -603,7 +373,6 @@ And as we can see, in many conditions are the vacant housing units spatially clu
 
 ## Neighborhood Characteristics
 
-### 4x4 Neighborhoods
 
 ```{r character_empty}
 nb4_data %>%
@@ -657,60 +426,6 @@ nb4_data %>%
   theme(legend.position = "bottom")
 ```
 
-### 8x8 Neighborhoods
-
-```{r character8_empty}
-nb8_data %>%
-  filter(d_decay == 0.95) %>%
-  ggplot() +
-  geom_smooth(aes(x = ave_inc,
-                  y = 1 - ave_vacant,
-                  colour = "Income")) +
-  geom_smooth(aes(x = ave_status,
-                  y = 1 - ave_vacant,
-                  colour = "Status")) +
-  geom_smooth(aes(x = ave_quality,
-                  y = 1 - ave_vacant,
-                  colour = "Quality")) +
-  geom_smooth(aes(x = ave_rent,
-                  y = 1 - ave_vacant,
-                  colour = "Rent")) +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "", y = "Neighborhood Vacancy Rate", 
-       colour = "", title = "decay = 0.95") +
-  scale_colour_manual(values = label_seg) +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-nb8_data %>%
-  filter(d_decay == 0.8) %>%
-  ggplot() +
-  geom_smooth(aes(x = ave_inc,
-                  y = 1 - ave_vacant,
-                  colour = "Income")) +
-  geom_smooth(aes(x = ave_status,
-                  y = 1 - ave_vacant,
-                  colour = "Status")) +
-  geom_smooth(aes(x = ave_quality,
-                  y = 1 - ave_vacant,
-                  colour = "Quality")) +
-  geom_smooth(aes(x = ave_rent,
-                  y = 1 - ave_vacant,
-                  colour = "Rent")) +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "", y = "Neighborhood Vacancy Rate", 
-       colour = "", title = "decay = 0.8") +
-  scale_colour_manual(values = label_seg) +
-  theme_bw() +
-  theme(legend.position = "bottom")
-```
-
 Which neighborhoods are empty? When there are no distinct differences in vacancy rates between neighborhoods, the average income/status/quality/rent of the neighborhood has obviously no relationship to the vacancy rate. But otherwise, the neighborhoods with higher vacancies tend to have lower average income/status/quality/rent. All households that can afford a neighborhood with a given status and/or housing quality of a unit want to move there. When they move to a better unit, they leave a vacancy in their old unit If this unit is attractive to another household, for which this unit is within their budget, they fill this vacancy. But again they create a vacancy in their even worse previous unit. This continues as the least desirable units are left vacant. If the least desirable units are concentrated in space, which they usually are as investments in housing quality and neighbourhood desirability are spatially interdependent, entire neighborhoods remain vacant. Only those with no other options will move to these neighborhoods, which are households at the very end of the income and status distribution.
 
 
@@ -735,33 +450,12 @@ nb4_data %>%
        title = "4x4 Neighbourhoods") +
   theme_bw() +
   theme(legend.position = "bottom")
-
-nb8_data %>%
-  group_by(run, r_correlation, a_preferences, d_decay, nb_8) %>%
-  summarise(ave_rank_vac = mean(rank_vacant),
-            sd_rank_vac = sd(rank_vacant)) %>%
-  ggplot() +
-  aes(x = ave_rank_vac,
-      y = sd_rank_vac,
-      colour = as.factor(d_decay)) +
-  geom_point(size = 0.1) +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "Average Neighborhood Rank by Occupation Rate",
-       y = "SD of Rank by Occupation Rate", colour = "decay",
-       title = "8x8 Neighbourhoods") +
-  theme_bw() +
-  theme(legend.position = "bottom")
 ```
 
 I accidentally calculated the inverse of the vacancy rates for these plots. The occupation rate is 1 - vacancy rate. However, changes in the vacancy rate are identical to the occupation rate, the ranking is just reversed. Here we see again that, if stable segregated neighborhoods form, they remain stable. While there are occasionally some vacancies in mid-level neighborhoods that are also quickly filled, neighborhoods at the top and bottom of the vacancy rate ranks rarely change their vacancy rate over time. If you are living in the most desirable neighborhood, you are not going to move out as there is no place that would improve your residential satisfaction. So there are rarely vacancies in the top neighborhoods. At the bottom of the distributions, these neighborhoods are so undesirable that no one wants to move there. These neighborhoods have high vacancy rates throughout.
 
 
-
 # Individual Level
-
 
 ## Housing Inequality by Income
 
@@ -971,8 +665,6 @@ unit_data %>%
 
 # Residential Mobility
 
-## Mobility between Units
-
 The model, as other models of self-organizing residential segregation, relies on assumptions about residential choice and residential mobility. As such, these models should make prediction / reproduce stylized facts about residential mobility. I am able to measure mobility by checking whether a household lives on the same unit at time t as they do in t-1. I summarize for each household within each run, how often they move. Divided by the number of time points, this gives the probability of moving while the model is already in equilibrium.
 
 Moves can have two reasons: (1) there is an affordable vacant unit the household can move to that increases the households' residential satisfaction or (2) the household cannot afford their current location anymore. Together with the information on whose rent is over their budget from before, I am able to say who is likely to move for which reason.
@@ -984,7 +676,6 @@ indiv_data <- unit_data %>%
   group_by(run, r_correlation, a_preferences, d_decay, id) %>%
   summarise(prob_move_unit = mean(x != Lag(x) & y != Lag(y), na.rm = TRUE),
             prob_move_nb4 = mean(nb_4 != Lag(nb_4), na.rm = TRUE),
-            prob_move_nb8 = mean(nb_8 != Lag(nb_8), na.rm = TRUE),
             income = mean(income),
             status = mean(status)) %>%
   ungroup()
@@ -1019,48 +710,10 @@ ggplot(indiv_data) +
 The results show that usually high income households rarely move while poor households have a considerable chance to move every time step. The exceptions to this patterns are the cases where no stable neighborhoods form. In these cases, even rich households move often as they can secure better housing quality elsewhere when housing quality decays fast or because they follow high-status households. As only very poor households tend to overspend, at least a part of the high residential mobility of the poor is by displacement and not by choice. Interestingly, in same parameter combinations, it is not the poorest that have the highest residential mobility. This indicates that they are living already in the cheapest housing and cannot move, even when they overpay. They are "stuck in place". However, this model does not include eviction and homelessness, so this observation may not hold empirically.
 
 
-## Mobility between Neighborhoods
-
-
-```{r nb8_mob}
-ggplot(indiv_data) +
-  aes(x = income,
-      y = prob_move_nb8,
-      colour = as.factor(d_decay)) +
-  geom_smooth() +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "Income", y = "Probability of Moving Neighborhood", colour = "decay") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-ggplot(indiv_data) +
-  aes(x = status,
-      y = prob_move_nb8,
-      colour = as.factor(d_decay)) +
-  geom_smooth() +
-  facet_grid(rows = vars(r_correlation),
-             cols = vars(a_preferences),
-             labeller = labeller(.rows = label_r, 
-                                 .cols = label_a)) +
-  labs(x = "Status", y = "Probability of Moving Neighborhood", colour = "decay") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-```
-
-The mobility between neighborhoods is pretty much identical than mobility between units with 8x8 neighborhoods. This suggests that households typically also move neighborhood when they move housing unit. This is less consistent with empirical evidence but might be in part due to the relatively small size of neighborhoods in this analysis. The probability of a vacant unit in ones neighborhood is quite low.
-
-
 ## References
 
 Benard, Stephen, and Robb Willer. 2007. “A Wealth and Status-Based Model of Residential Segregation.” The Journal of Mathematical Sociology 31(2):149–74. doi: 10.1080/00222500601188486.
 
-Elbers, Benjamin, and Rob J. Gruijters. 2024. “Segplot: A New Method for Visualizing Patterns of Multi-Group Segregation.” Research in Social Stratification and Mobility 89:100860. doi: 10.1016/j.rssm.2023.100860.
-
 Reardon, Sean F., Glenn Firebaugh, David O’Sullivan, and Stephen A. Matthews. 2006. “A New Approach to Measuring Socio-Spatial Economic Segregation.” Joensuu, Finland.
-
-Reardon, Sean F., Stephen A. Matthews, David O’Sullivan, Barrett A. Lee, Glenn Firebaugh, Chad R. Farrell, and Kendra Bischoff. 2008. “The Geographic Scale of Metropolitan Racial Segregation.” Demography 45(3):489–514. doi: 10.1353/dem.0.0019.
 
 
