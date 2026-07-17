@@ -1,0 +1,566 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIg: Analysis of the Size and Density Experiment"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(DescTools)
+library(dplyr)
+library(ggplot2)
+library(fixest)
+library(modelsummary)
+library(marginaleffects)
+
+data_directory <- "./data/size/" # TODO change directory
+
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+```
+
+# Experiment Description
+
+## Motivation and Parameters
+
+I also want to know whether the grid size and density affect the model. There is some debate over whether larger cities are more segregated. Descriptive results show that larger cities tend to be more segregated, but some argue that this relationship is spurious and there is no clear explanation for this pattern yet (e.g., Krupka 2007, Östh et al. 2015, Louf and Barthelemy 2016). Simulating cities of different sizes might uncover whether and why such a relationship exists. Big cities tend to differ from smaller cities in many ways. However, simulation can offer a perfect counterfactual in which the model's behavior remains identical while only the city size is varied. In the empirical literature, Louf and Barthelemy (2016) have found that the rich tend to cluster more in larger cities and that larger cities have proportionally fewer neighborhoods. Östh et al. (2015) argue that larger cities exhibit greater macro-scale segregation.
+
+There are also more technical reasons why I want to check these parameters. The chosen model size for all the other experiments is on the low side, with a 30x30 grid, compared to other segregation ABMs. I opted for this lower number because I export observations for all units, not just segregation indices, and I wanted to limit data size and computation time. The density of 0.85 is standard in segregation ABMs because these models need a relatively high vacancy rate and/or population dynamics to converge to equilibrium (Fossett and Waren 2005). Such high vacancy rates are unrealistic for real cities, however. I therefore vary city size to see whether larger cities (e.g., 50x50) produce different results regarding the model's mechanisms and whether the assumption of such a high density poses problems for external validity.
+
+The model simulates grids of 10x10, 30x30, and 50x50 and uses 2 x 3 x 2 = 12 levels of the initial parameters, in addition to 3 levels of density (0.85, 0.9, 0.95). The model repeats each combination 10 times, so the experiment consists of 3 × 12 × 3 × 10 = 1080 runs of 200 steps.
+
+
+## Results Summary
+
+The results from this robustness check do not indicate that arbitrary choices in size and density bias the previous analyses. All other parameters have the same relationships to segregation indices as before. Density has no relationship whatsoever to segregation.
+
+This analysis, however, suggests a genuine positive effect of city size on segregation levels, particularly macro-scale segregation. When the grid size increases but vision remains fixed, local interactions remain the same while the city in which they play out grows. The same local sorting rule can now generate larger, more coherent high‑ and low‑status regions before they run into each other. There is a greater distance between communities of high- vs. low-income and status. As the city grows, the interior of homogeneous clusters grows faster than their boundaries, because areas change proportionally to size squared, while boundaries change only proportionally to size. Therefore, a smaller fraction of cells is near “mixed” borders between groups.
+Those homogeneous interiors dominate standard segregation indices, so in larger grids, the model produces higher measured segregation, even though each agent still only looks at the same small neighborhood. This effect is amplified when there is less inertia.
+
+While these results are interesting and provide, for the first time, an explanation for the observed relationship of city size and segregation, the simulated cities are still much smaller than real cities, and the effect seems to decrease with city size. We should therefore be cautious in applying this result to real cities. It would be worth following up on this potential explanation, however. While the increase in overall segregation decreases quite sharply with city size, the increase in macro-scale segregation appears to decrease less sharply.
+
+
+# Segregation
+
+
+```{r}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg", "Income", dimension),
+         dimension = if_else(dimension == "status_seg", "Status", dimension),
+         dimension = if_else(dimension == "quality_seg", "Quality", dimension),
+         dimension = if_else(dimension == "rent_seg", "Rent", dimension),
+         dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
+
+seg_long %>%
+  filter(dimension == "Income") %>%
+  group_by(a_preferences, b_inertia, r_correlation, size, density) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(size),
+      y = segregation,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(b_inertia),
+      group = paste(b_inertia, density)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Income Segregation", y = "H^R", x = "size",
+       colour = "density", shape = "density", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "Status") %>%
+  group_by(a_preferences, b_inertia, r_correlation, size, density) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(size),
+      y = segregation,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(b_inertia),
+      group = paste(b_inertia, density)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Status Segregation", y = "H^R", x = "size",
+       colour = "density", shape = "density", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "Quality") %>%
+  group_by(a_preferences, b_inertia, r_correlation, size, density) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(size),
+      y = segregation,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(b_inertia),
+      group = paste(b_inertia, density)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Housing Quality Segregation", y = "H^R", x = "size",
+       colour = "density", shape = "density", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "Rent") %>%
+  group_by(a_preferences, b_inertia, r_correlation, size, density) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(size),
+      y = segregation,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(b_inertia),
+      group = paste(b_inertia, density)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Rent Segregation", y = "H^R", x = "size",
+       colour = "density", shape = "density", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+Because the differently colored lines representing different densities often overlap, I conclude that population densities have little or no effect on segregation patterns. However, this simulation includes population dynamics: 2 per cent of all households move out of the city, and the same number move in, and I only simulated a maximum density of 95 per cent. It might be the case that the densities simulated here are not high enough to affect model convergence, or that population dynamics limit the importance of density. Nevertheless, we want the model to converge and for its results not to be artefacts of arbitrary parameter choices. The results for different densities are therefore encouraging for the external validity of the model.
+
+To give a tentative explanation why density does not affect segregation:  density only changes how many cells are occupied, not how agents see or evaluate space. Landlords’ investment and households’ moves use the same local rule and rent mechanism at any density, so it does not fundamentally change the equilibrium pattern of who ends up where. Changing density mainly affects how much room there is to move. This could affect the speed and noisiness of adjustment, though.
+
+I was more surprised to see such a stark effect of city size. In particular, tiny cities with 10 x 10 = 100 housing units have much lower segregation levels, and there are barely any differences in segregation across the other parameters. This suggests that segregation models can be too small. The difference between cities of 30x30 and 50x50 is much less drastic, even though segregation tends to be higher in the larger city. The overall relationships with the other parameters are comparable across these two sizes, which is good news because the results inferred from the other simulations hold across different size specifications. Even though 50x50 is not massively large, it is a more common size in the segregation ABM literature. 
+
+When the grid size increases but vision remains fixed, local interactions remain the same while the city in which they play out grows. The same local sorting rule can now generate larger, more coherent high‑ and low‑status regions before they run into each other. There is a greater distance between communities of high- vs. low-income and status. As the city grows, the interior of homogeneous clusters grows faster than their boundaries, because areas change proportionally to size squared, while boundaries change only proportionally to size. Therefore, a smaller fraction of cells is near “mixed” borders between groups.
+Those homogeneous interiors dominate standard segregation indices, so in larger grids, the model produces higher measured segregation, even though each agent still only looks at the same small neighborhood.
+
+Interestingly, city size and inertia interact. Larger cities are much more segregated when inertia is lower. Less inertia leads to more segregation in its own right, because local neighborhoods can differentiate faster and more thoroughly. The spatial feedback loop is much stronger and can amplify neighborhood sorting. With high inertia, the whole system is “stiff”: even a large city cannot differentiate that much, so increasing size only modestly increases segregation. With low inertia, the system is “fluid”: local shocks get massively amplified into large, homogeneous regions—and the larger the city, the more room there is for this amplification. 
+
+
+
+```{r}
+## Defining Segregation Measures
+deciles <- function(variable) {
+  quantile(variable, 
+           probs = seq(.1, .9, by = .1),
+           na.rm = TRUE)
+}
+
+entropy <- function(p) {
+  e <- ifelse(p == 0 | p == 1, 
+              0, # 0 * log2(1 / 0) := 0; see Reardon et al (2006), p. 11
+              p * log2(1 / p) + (1 - p) * log2(1 / (1 - p)))
+  return(e)
+}
+
+# entropy for the percentile below a threshold of a distribution 
+# notation following Reardon and Bischoff (2011) p. 1110
+E_p <- function(variable, threshold) {
+  p <- mean(variable <= threshold, na.rm = TRUE)
+  return(entropy(p))
+}
+
+
+# Theil segregation index for a continuous variable and a single threshold
+H_p <- function(variable, neighborhoods, threshold){
+  # notation following Reardon and Bischoff (2011) p. 1111
+  # this function assumes that we have a dataset with a continuous variable of individuals in neighborhoods
+  df <- data.frame(variable = variable, neighborhoods = neighborhoods)
+  
+  entropy_total_E <- E_p(variable, threshold)
+  pop_total_T <- sum(is.na(variable) == FALSE)
+  
+  df_nb <- data.frame(nb_j = unique(neighborhoods),
+                      pop_tj = NA,
+                      entropy_Ej = NA)
+  for (j in 1:length(df_nb$nb_j)) {
+    temp <- subset(df, neighborhoods == df_nb$nb_j[j])
+    df_nb$pop_tj[j] = sum(is.na(temp$variable) == FALSE)
+    df_nb$entropy_Ej[j] = E_p(variable = temp$variable, threshold = threshold)
+  }
+  
+  relative_entropies <- (df_nb$pop_tj * df_nb$entropy_Ej) / (pop_total_T * entropy_total_E)
+  H_p <- 1 - sum(relative_entropies, na.rm = TRUE)
+  
+  return(H_p)
+}
+
+
+# Reardon index
+H_R <- function(variable, neighborhoods, thresholds) {
+  p_i <- rep(NA, times = length(thresholds))
+  E_p_i <- rep(NA, times = length(thresholds))
+  H_p_i <- rep(NA, times = length(thresholds))
+  
+  for(i in 1:length(thresholds)) {
+    p_i[i] <- mean(variable <= thresholds[i], na.rm = TRUE)
+    E_p_i[i] <- E_p(variable, thresholds[i])
+    H_p_i[i] <- H_p(variable, neighborhoods, thresholds[i])
+  }
+  
+  E_p_model <- lm(E_p_i ~ p_i + I(p_i^2) + I(p_i^3) + I(p_i^4))
+  E_p_fun <- function(p) {
+    E_p_model$coefficients[1] + E_p_model$coefficients[2] * p + E_p_model$coefficients[3] * p^2 + E_p_model$coefficients[4] * p^3 + E_p_model$coefficients[5] * p^4
+  }
+  H_p_model <- lm(H_p_i ~ p_i + I(p_i^2) + I(p_i^3) + I(p_i^4))
+  H_p_fun <- function(p) {
+    H_p_model$coefficients[1] + H_p_model$coefficients[2] * p + H_p_model$coefficients[3] * p^2 + H_p_model$coefficients[4] * p^3 + H_p_model$coefficients[5] * p^4
+  }
+  integrand <- function(p) {H_p_fun(p) * E_p_fun(p)}
+  
+  integral <- integrate(integrand, 0, 1)
+  H_R <- 2 * log(2) * integral$value
+  
+  return(H_R)
+}
+```
+
+
+## Macro- vs. Micro-Scale Segregation
+
+The above explanation for the effect of city size on segregation, along with some of the literature, suggests that larger cities tend to exhibit more macro-scale segregation. I therefore repeat selected analyses from robustness check F to see whether this is the case.
+
+
+```{r}
+city_data_2 <- unit_data %>%
+  filter(t >= 175) %>% # reduce size to limit computation time
+  mutate(nb_3 = paste(floor(x / 3), floor(y / 3), sep = "_"),
+         nb_10 = paste(floor(x / 10), floor(y / 10), sep = "_")) %>%
+  group_by(sample_id, a_preferences, r_correlation, b_inertia, size, density, t) %>%
+  summarise(inc_seg_3 = H_R(hh_income, nb_3, deciles(hh_income)),
+            quality_seg_3 = H_R(housing_quality, nb_3, deciles(housing_quality)),
+            inc_seg_10 = H_R(hh_income, nb_10, deciles(hh_income)),
+            quality_seg_10 = H_R(housing_quality, nb_10, deciles(housing_quality)))  %>%
+  mutate(inc_macromicro = inc_seg_10 / inc_seg_3,
+         quality_macromicro = quality_seg_10 / quality_seg_3)
+
+city_data_2 %>%
+  filter(density == 0.85) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size) %>%
+  summarise(inc_macromicro = mean(inc_macromicro)) %>%
+  ggplot() +
+  aes(x = size,
+      y = inc_macromicro,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Income Segregation (density = 0.85)", y = "Macro- / Micro-Segregation", 
+       colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data_2 %>%
+  filter(density == 0.95) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size) %>%
+  summarise(inc_macromicro = mean(inc_macromicro)) %>%
+  ggplot() +
+  aes(x = size,
+      y = inc_macromicro,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Income Segregation (density = 0.95)", y = "Macro- / Micro-Segregation", 
+       colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data_2 %>%
+  filter(density == 0.85) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size) %>%
+  summarise(quality_macromicro = mean(quality_macromicro)) %>%
+  ggplot() +
+  aes(x = size,
+      y = quality_macromicro,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Quality Segregation (density = 0.85)", y = "Macro- / Micro-Segregation", 
+       colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data_2 %>%
+  filter(density == 0.95) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size) %>%
+  summarise(quality_macromicro = mean(quality_macromicro)) %>%
+  ggplot() +
+  aes(x = size,
+      y = quality_macromicro,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Quality Segregation (density = 0.95)", y = "Macro- / Micro-Segregation", 
+       colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Indeed, the results suggest that the ratio of segregation measured with 3x3 neighborhoods and segregation measured with 10x10 neighborhoods increases with size, at least when inertia is low. As high inertia hinders spatial feedback loops from creating strong segregation with large, homogeneous clusters, it makes sense that the increase in macro-scale segregation is low or even nonexistent at high levels of inertia.
+
+(The micro-to-macro ratio for the 10x10 cities is necessarily zero because there can only be one 10x10 neighborhood in a 10x10 city.)
+
+
+## Segregation Profiles
+
+One possibility for the lower segregation of the affluent in robustness check E was that maybe affluent households need a critical mass to form very exclusive neighborhoods. The segregation profile by income deciles in the 50x50 city does not show a higher concentration of affluent households than in E. This analysis, based on a 50x50 city with a density of 0.85, does not support the critical mass hypothesis.
+
+
+```{r}
+seg_quantile <- unit_data %>%
+  filter(t == 150 & size == 50 & density == 0.85) %>%
+  group_by(sample_id, a_preferences, r_correlation, b_inertia, hh_income, nb) %>%
+  reframe(decile = seq(.1, .9, by = .1)) %>%
+  ungroup() %>%
+  group_by(sample_id, a_preferences, r_correlation, b_inertia, decile) %>%
+  summarise(income_Hp = H_p(hh_income, nb, quantile(hh_income, decile, na.rm = TRUE)))
+
+
+ggplot(seg_quantile) +
+  aes(x = decile,
+      y = income_Hp,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "a_preferences", 
+       linetype = "a_preferences", title = "Income Segregation by Quantiles") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# Vacancies
+
+## Vacancy Segregation
+
+```{r}
+seg_long %>%
+  filter(dimension == "Vacancy") %>%
+  group_by(a_preferences, b_inertia, r_correlation, size, density) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(size),
+      y = segregation,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(b_inertia),
+      group = paste(b_inertia, density)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation", y = "Theil Index H", x = "size",
+       colour = "density", shape = "density", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Vacancy segregation mimics the segregation patterns discussed above.
+
+
+## Properties of Neighborhoods
+
+```{r, out.width="50%"}
+ggplot(nb_data) +
+  aes(x = ave_inc,
+      y = ave_vacant,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(size)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation, b_inertia),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Income", y = "Neighborhood Vacancy Rate", 
+       colour = "density", shape = "density", linetype = "size") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_status,
+      y = ave_vacant,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(size)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation, b_inertia),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Status", y = "Neighborhood Vacancy Rate", 
+       colour = "density", shape = "density", linetype = "size") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_rent,
+      y = ave_vacant,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(size)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation, b_inertia),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Rent", y = "Neighborhood Vacancy Rate", 
+       colour = "density", shape = "density", linetype = "size") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data) +
+  aes(x = ave_quality,
+      y = ave_vacant,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(size)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation, b_inertia),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Housing Quality", y = "Neighborhood Vacancy Rate", 
+       colour = "density", shape = "density", linetype = "size") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+While city size seems unrelated to neighborhood vacancy rates, population density obviously is related to vacancy rates. The overall population density determines which proportion of units stays vacant in the entire city. With higher density, there are fewer vacancies. This shows also on the neighborhood level as low-income neighborhoods with cheap and low quality housing have fewer vacancies in runs with higher densities. As established in the main experiment, when there is segregation, vacancies are almost exclusively found in low quality neighborhoods as everyone wants to maximize their utility with their housing choice and these units and neighborhoods provide little utility.
+
+```{r}
+nb_vacancies_1 <- feglm(data = nb_data,
+                           ave_vacant ~ ave_quality + quality_seg + density,
+                           family = binomial(link = "logit"),
+                           cluster = "sample_id")
+nb_vacancies_2 <- feglm(data = nb_data,
+                           ave_vacant ~ ave_quality * quality_seg + density,
+                           family = binomial(link = "logit"),
+                           cluster = "sample_id")
+nb_vacancies_3 <- feglm(data = nb_data,
+                           ave_vacant ~ ave_quality * quality_seg + density * quality_seg,
+                           family = binomial(link = "logit"),
+                           cluster = "sample_id")
+nb_vacancies_4 <- feglm(data = nb_data,
+                           ave_vacant ~ ave_quality * quality_seg * density,
+                           family = binomial(link = "logit"),
+                           cluster = "sample_id")
+
+quality_seg_vals   <- c(min(nb_data$quality_seg, na.rm = TRUE),
+                    mean(nb_data$quality_seg, na.rm = TRUE),
+                    max(nb_data$quality_seg, na.rm = TRUE))
+quality_seg_labels <- paste0(c("Min", "Mean", "Max"), " (", round(inc_seg_vals, 3), ")")
+
+modelsummary(list(
+  nb_vacancies_1,
+  nb_vacancies_2,
+  nb_vacancies_3,
+  nb_vacancies_4
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001),
+  gof_omit = ".*")
+```
+
+Does density interact with segregation and average neighborhood housing quality though?
+
+
+## Properties of empty Units
+
+```{r}
+empty_units <- unit_data %>%
+  filter(empty) %>%
+  group_by(a_preferences, r_correlation, b_inertia, density, size) %>%
+  summarize(mean_rent = mean(rent),
+            mean_quality = mean(housing_quality))
+
+ggplot(empty_units) +
+  aes(x = as.factor(size),
+      y = mean_rent,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(b_inertia),
+      group = paste(b_inertia, density)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Mean Rent of vacant Units", y = "Rent", x = "size",
+       colour = "density", shape = "density", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(empty_units) +
+  aes(x = as.factor(size),
+      y = mean_quality,
+      colour = as.factor(density),
+      shape = as.factor(density),
+      linetype = as.factor(b_inertia),
+      group = paste(b_inertia, density)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Mean Quality of vacant Units", y = "Housing Quality", x = "size",
+       colour = "density", shape = "density", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+There are only small differences in rent and quality of the empty housing units city size with smaller cities having empty units with marginally higher rents and housing quality. Density does not matter at all.
+
+
+# References
+
+Fossett, Mark, and Warren Waren. 2005. “Overlooked Implications of Ethnic Preferences for Residential Segregation in Agent-Based Models.” Urban Studies 42(11):1893–1917. doi: 10.1080/00420980500280354.
+
+Krupka, Douglas J. 2007. “Are Big Cities More Segregated? Neighbourhood Scale and the Measurement of Segregation.” Urban Studies 44(1):187–97. doi:10.1080/00420980601023828.
+
+Louf, Rémi, and Marc Barthelemy. 2016. “Patterns of Residential Segregation” edited by Y. Chen. PLOS ONE 11(6):e0157476. doi:10.1371/journal.pone.0157476.
+
+Östh, John, William A. V. Clark, and Bo Malmberg. 2015. “Measuring the Scale of Segregation Using K-Nearest Neighbor Aggregates.” Geographical Analysis 47(1):34–49. doi:10.1111/gean.12053.

@@ -1,0 +1,759 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIc: Analysis of the Gentrification Experiment"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(DescTools)
+library(ggplot2)
+library(fixest)
+library(modelsummary)
+
+data_directory <- "./data/gentri/" # TODO change directory
+#data_directory <- "/home/malte/Projects/A Socio-Economic Model of the Housing Market/abm/c_gentri/data/"
+
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+
+city_data <- city_data %>%
+  mutate(distribution = if_else(t >= intervention_time, post_distribution, distribution),
+         density = if_else(t >= intervention_time, post_density, density))
+
+nb_data <- nb_data %>%
+  mutate(distribution = if_else(t >= intervention_time, post_distribution, distribution),
+         density = if_else(t >= intervention_time, post_density, density))
+
+unit_data <- unit_data %>%
+  mutate(distribution = if_else(t >= intervention_time, post_distribution, distribution),
+         density = if_else(t >= intervention_time, post_density, density))
+
+nb_data_periods <- nb_data %>%
+  mutate(period = case_when(
+    t < intervention_time        ~ "Pre-Intervention",
+    t < intervention_time + 50  ~ "Transition",
+    t >= intervention_time + 150 ~ "New Equilibrium"
+  )) %>%
+  filter(!is.na(period)) %>%
+  mutate(period = factor(period,
+                         levels = c("Pre-Intervention", "Transition", "New Equilibrium")))
+```
+
+# Experiment Description
+
+## Parameters and Motivation
+
+Gentrification is defined as the socio-economic ascent of a disinvested neighborhood with poor to middle-class residents to a redeveloped high-income neighborhood (Owens 2012). Because it is connected to changes in resident characteristics and rising rents, many think of gentrification as a process that displaces poor residents and contributes to housing affordability issues. Gentrification typically occurs in places of disinvestment near the city centre or established neighborhoods (Guerrieri et al., 2013). The residential make-up of a neighborhood changes gradually, where low-income but high-status residents (like students or artists) move in first and make the neighborhood more attractive to higher-income residents (Blasius et al., 2016).
+
+Yet the proposed causes of gentrification are still under debate. Economic models (e.g. Guerrieri et al., 2013) treat gentrification and neighborhood decay not as intrinsic processes of neighborhoods but as responses to changes in overall housing demand in a city. Because of spatial interdependencies, these demand shocks manifest in select neighborhoods at a time. To observe which dynamics the model exhibits when confronted with a demand shock, I simulate the empirically most plausible parameter combination for 300 time steps and administer a shock to the overall population density and/or income distribution.
+
+I simulate a 30×30 city with 2% turnover, a vision parameter of 1, a distribution parameter of 2, and a population density of 0.9. The importance of neighbors' social status relative to housing quality is 0.25; status and income have a medium correlation (a parameter value of 0.5, corresponding to a Pearson correlation of 0.71); and housing quality changes slowly (inertia of 0.95). This constitutes a common baseline across all scenarios, reflecting the empirically most plausible parameter combination. I run the model for longer than usual to ensure there are no trends before the shock. After 300 time steps, the population density can remain stable, decrease to 0.85, or increase to 0.95. Similarly, income inequality can stay at a Gini index of 0.31, increase to 0.42 (distribution = 1), or decrease to 0.26 (distribution = 3). This yields 3×3=9 distinct scenarios, which I repeat 20 times, for a total of 180 runs.
+
+The simulations run for 600 time steps, resulting in a raw dataset with $9.72\times10^7$ observations. I discard the first 200 time steps as burn-in, so that I can observe the equilibrium before the shock, the unfolding dynamics, and the equilibrium after the shock. I therefore analyze $6.48\times10^7$ observations.
+
+## Notes on the Analysis
+
+With a turnover rate of 2%, the proportion of original households remaining after $n$ steps decays as $0.98^n$. The demographic replacement therefore follows a half-life of about 35 steps:
+
+| Steps after intervention | Original HH remaining | New distribution share |
+|---|---|---|
+| 35 | 50% | 50% |
+| 70 | 25% | 75% |
+| 115 | 10% | 90% |
+| 150 | 5% | 95% |
+
+
+Since income sorting happens in parallel with demographic replacement, by 50 steps after the intervention the most acute dynamics have unfolded (roughly 64% of households replaced). By 150 steps after the intervention, 95% of households come from the new distribution and the city will have had time to sort into a new spatial equilibrium. The 100 steps in between are excluded as neither clearly transitional nor clearly settled. I therefore distinguish three periods in the analysis:
+
+- **Pre-intervention**: all steps before the shock
+- **Transition**: first 50 steps after the shock
+- **New equilibrium**: from 150 steps after the shock onward
+
+One parameter combination after the intervention has the same post-intervention parameters as before: a distribution of 2 and a population density of 0.9. These runs serve as placebo comparisons and are displayed in the middle of the faceted plots.
+
+## Summary of Results
+
+At the city level, the spatial sorting of households by income, status, housing quality and rent is unaffected by any of the nine interventions. Inequality in housing quality and rent does respond to changes in the income distribution — rising when inequality increases and falling when it decreases — but this reflects a rescaling of the overall distribution rather than a change in the spatial distribution.
+
+Across all nine scenarios, neighborhoods maintain their relative income, status, quality and rent ranks after the shock. This holds both within periods — rank fluctuates little from step to step — and between periods: the average rank of a neighborhood before the intervention predicts its average rank after it almost perfectly. Regressions of the change in income or status rank on pre-intervention neighborhood characteristics explain virtually no variance, and the interaction between pre-intervention status rank and rent rank — the interaction term that should measure gentrification — is consistently zero.
+
+When income inequality increases, the neighborhoods at the top of the hierarchy gain income and status while those in the middle and bottom lose; the reverse holds when inequality decreases. Changes in population density have little effect on neighborhood averages. This distributional amplification reflects the enrichment of already-advantaged neighborhoods rather than the upgrading of undervalued ones. Residential mobility and rent burden show the same pattern: neither forced displacement nor housing unaffordability changes discontinuously after the shock, providing further evidence against a gentrification response.
+
+The self-reinforcing neighborhood upgrading cycle desribed in the main analysis drives neighborhood formation during the initial sorting phase. Once the city has reached a spatial equilibrium, however, this cycle cannot be re-triggered by a uniform demand shock, because the equilibrium is complete: status, housing quality and rent are tightly aligned across all neighborhoods, leaving no undervalued high-potential areas for the mechanism to work through. The reason is that landlord investment responds continuously and proportionally to neighborhood rent signals, with no threshold effects. This rules out coordination failure: no neighborhood can become stuck in under-investment. In reality, investment decisions are discrete and threshold-dependent. The model therefore explains neighborhood formation and stability well, but its scope condition is that it abstracts from the frictions — coordination failure, historical path dependence, and a pioneer household type with high status but low income — that make neighborhoods in real cities selectively vulnerable to demand-shock-driven gentrification.
+
+
+# City Level
+
+
+```{r city-timeseries}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg",     "Income",   dimension),
+         dimension = if_else(dimension == "status_seg",  "Status",   dimension),
+         dimension = if_else(dimension == "quality_seg", "Quality",  dimension),
+         dimension = if_else(dimension == "rent_seg",    "Rent",     dimension),
+         dimension = if_else(dimension == "vacancy_seg", "Vacancy",  dimension))
+
+seg_long %>%
+  filter(dimension != "Vacancy") %>%
+  group_by(post_distribution, post_density, t, dimension) %>%
+  summarise(segregation = mean(segregation), .groups = "drop") %>%
+  ggplot() +
+  aes(x = t, 
+      y = segregation, 
+      colour = dimension, 
+      group = dimension) +
+  geom_line() +
+  geom_vline(xintercept = unique(city_data$intervention_time),
+             linetype = "dashed", 
+             colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Time", y = expression(H^R), colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data %>%
+  pivot_longer(cols = c("rent_gini", "quality_gini"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "gini") %>%
+  mutate(dimension = if_else(dimension == "rent_gini",    "Rent",    dimension),
+         dimension = if_else(dimension == "quality_gini", "Quality", dimension)) %>%
+  group_by(post_distribution, post_density, t, dimension) %>%
+  summarise(gini = mean(gini), .groups = "drop") %>%
+  ggplot() +
+  aes(x = t, y = gini, colour = dimension, group = dimension) +
+  geom_line() +
+  geom_vline(xintercept = unique(city_data$intervention_time),
+             linetype = "dashed",
+             colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Time", y = "Gini Index", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Segregation levels show no discontinuity after the intervention. Even during the transitional phase, households of different income and status remain unevenly distributed across neighborhoods to the same degree as before. There is, however, a slight upward trend in segregation across all scenarios. While segregation emerges quickly in the model, several hundred time steps are apparently not sufficient to reach the true equilibrium: as long as vacancies open up through population turnover and new households enter the city, there are further opportunities for sorting. Rent and housing quality follow the same trend. As established in the dedicated robustness checks, neither the level of turnover nor the inequality of the income distribution affects segregation levels.
+
+Inequality in the endogenous housing characteristics — quality and rent — does respond to the interventions. As household characteristics gradually converge to the new distribution, rising income inequality leads to rising inequality in housing quality and rent, while falling income inequality has the reverse effect. Changes in population density have little impact on inequality in quality and rent. There is a small discontinuity right at the transition, which is more pronounced when density increases: many newly added households are initially placed on random vacant units that tend to be of low quality and low rent, temporarily compressing the distribution. Once these households leave their initial units and sort into neighborhoods according to their preferences and budget constraints, inequality returns to its pre-shock level.
+
+# Neighborhood Level
+
+## Examples
+
+```{r nb-examples}
+set.seed(53129)
+nb_examples <- nb_data %>%
+  filter(sample_id %in% sample(unique(nb_data$sample_id), 9))
+
+ggplot(nb_examples) +
+  aes(x = t,
+      y = ave_inc,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  geom_vline(xintercept = unique(nb_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Income") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t,
+      y = ave_status,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  geom_vline(xintercept = unique(nb_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Status") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t,
+      y = ave_rent,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  geom_vline(xintercept = unique(nb_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Rent") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+ggplot(nb_examples) +
+  aes(x = t,
+      y = ave_quality,
+      colour = nb,
+      group = nb) +
+  geom_line() +
+  geom_vline(xintercept = unique(nb_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_wrap(~sample_id) +
+  labs(y = "Average NB Housing Quality") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+Each facet shows a single run, plotting the average income, status, quality and rent of all neighborhoods over time. The neighborhood hierarchy appears stable across the intervention: the high-income neighborhoods after the shock tend to be the same ones that were high-income before it. In some runs, the distribution of neighborhood averages fans out or narrows after the transition, reflecting the compression or expansion of overall inequality documented at the city level.
+
+
+## NB Rank over Time
+
+```{r nb-rank-stability}
+# Three periods: pre-intervention, transition (first 50 steps after shock),
+# new equilibrium (from 150 steps after shock onward). Steps 50-150 post-shock
+# are excluded as neither clearly transition nor new equilibrium.
+stability_data <- nb_data %>%
+  mutate(period = case_when(
+    t < intervention_time                        ~ "Pre-Intervention",
+    t < intervention_time + 50                  ~ "Transition",
+    t >= intervention_time + 150                ~ "New Equilibrium"
+  )) %>%
+  filter(!is.na(period)) %>%
+  mutate(period = factor(period,
+                         levels = c("Pre-Intervention", "Transition", "New Equilibrium"))) %>%
+  group_by(sample_id, post_distribution, post_density, nb, period) %>%
+  summarise(ave_rank_inc     = mean(rank_inc),
+            sd_rank_inc      = sd(rank_inc),
+            ave_rank_status  = mean(rank_status),
+            sd_rank_status   = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality  = sd(rank_quality),
+            ave_rank_rent    = mean(rank_rent),
+            sd_rank_rent     = sd(rank_rent),
+            .groups = "drop")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)", y = "SD(Rank)",
+       title = "Neighborhood Stability by Income Rank",
+       colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)", y = "SD(Rank)",
+       title = "Neighborhood Stability by Status Rank",
+       colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)", y = "SD(Rank)",
+       title = "Neighborhood Stability by Housing Quality Rank",
+       colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)", y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent Rank",
+       colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The plots show how much a neighborhood's rank fluctuates within each of the three periods. As in the main experiment, rank is highly stable, with neighborhoods at the extremes of the distribution changing least. Rank stability is almost identical across all three periods, including the transition — neighborhoods may shift their absolute averages as the city becomes more or less unequal, but they do so in parallel, leaving their relative standing within the city largely unchanged. Housing quality rank fluctuates least of all (note the scale of the y-axis), as quality is the slowest-moving variable due to the high inertia parameter. Status rank fluctuates most, reflecting that social status is less directly tied to housing market outcomes than income or rent in these parameter combinations.
+
+
+```{r nb-rank-change}
+rank_change <- nb_data %>%
+  mutate(period = case_when(
+    t < intervention_time        ~ "pre",
+    t >= intervention_time + 150 ~ "post"
+  )) %>%
+  filter(!is.na(period)) %>%
+  group_by(sample_id, post_distribution, post_density, nb, period) %>%
+  summarise(ave_rank_inc     = mean(rank_inc),
+            ave_rank_status  = mean(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            ave_rank_rent    = mean(rank_rent),
+            .groups = "drop") %>%
+  pivot_wider(names_from = period,
+              values_from = c(ave_rank_inc, ave_rank_status, ave_rank_quality, ave_rank_rent)) %>%
+  mutate(change_rank_inc     = ave_rank_inc_post     - ave_rank_inc_pre,
+         change_rank_status  = ave_rank_status_post  - ave_rank_status_pre,
+         change_rank_quality = ave_rank_quality_post - ave_rank_quality_pre,
+         change_rank_rent    = ave_rank_rent_post    - ave_rank_rent_pre)
+
+ggplot(rank_change) +
+  aes(x = ave_rank_inc_pre,
+      y = change_rank_inc) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Income Rank",
+       y = "Change in Income Rank (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+
+ggplot(rank_change) +
+  aes(x = ave_rank_status_pre,
+      y = change_rank_status) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Status Rank",
+       y = "Change in Status Rank (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+
+ggplot(rank_change) +
+  aes(x = ave_rank_quality_pre,
+      y = change_rank_quality) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Quality Rank",
+       y = "Change in Quality Rank (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+
+ggplot(rank_change) +
+  aes(x = ave_rank_rent_pre,
+      y = change_rank_rent) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Rent Rank",
+       y = "Change in Rent Rank (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+```
+
+Whereas the preceding plots assessed rank stability within each analytic period, these plots compare ranks between periods. For each neighborhood, I calculate the average rank in the pre-intervention and post-intervention period and take the difference, then plot this change against the pre-intervention rank. The LOESS smooths lie consistently at zero across all scenarios and all four dimensions, confirming that the average rank change is zero for neighborhoods at every point in the pre-intervention hierarchy. Changes are smallest at the extremes, where neighborhoods are most entrenched in their positions.
+
+This pattern does not show the expected signature of gentrification or decay, in which selected neighborhoods change their relative standing. The demand shocks simulated here are more uniform than those typically associated with gentrification: changes in the income distribution shift the entire distribution without raising the mean, whereas real gentrification is often triggered by an inflow of young professionals that increases both inequality and average income simultaneously. Vacancy rates in the model are also considerably lower than in real cities, leaving ample room for incoming households to disperse rather than concentrate in specific neighborhoods.
+
+
+## Changes in NB Averages
+
+
+```{r nb-avg-change}
+avg_change <- nb_data %>%
+  mutate(period = case_when(
+    t < intervention_time        ~ "pre",
+    t >= intervention_time + 150 ~ "post"
+  )) %>%
+  filter(!is.na(period)) %>%
+  group_by(sample_id, post_distribution, post_density, nb, period) %>%
+  summarise(ave_inc     = mean(ave_inc),
+            ave_status  = mean(ave_status),
+            ave_quality = mean(ave_quality),
+            ave_rent    = mean(ave_rent),
+            .groups = "drop") %>%
+  pivot_wider(names_from = period,
+              values_from = c(ave_inc, ave_status, ave_quality, ave_rent)) %>%
+  mutate(change_ave_inc     = ave_inc_post     - ave_inc_pre,
+         change_ave_status  = ave_status_post  - ave_status_pre,
+         change_ave_quality = ave_quality_post - ave_quality_pre,
+         change_ave_rent    = ave_rent_post    - ave_rent_pre)
+
+ggplot(avg_change) +
+  aes(x = ave_inc_pre,
+      y = change_ave_inc) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Average NB Income",
+       y = "Change in Average NB Income (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+
+ggplot(avg_change) +
+  aes(x = ave_status_pre,
+      y = change_ave_status) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Average NB Status",
+       y = "Change in Average NB Status (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+
+ggplot(avg_change) +
+  aes(x = ave_quality_pre,
+      y = change_ave_quality) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Average NB Quality",
+       y = "Change in Average NB Quality (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+
+ggplot(avg_change) +
+  aes(x = ave_rent_pre,
+      y = change_ave_rent) +
+  geom_point(alpha = 0.4, size = 0.1) +
+  geom_smooth(se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Pre-Intervention Average NB Rent",
+       y = "Change in Average NB Rent (New Equilibrium - Pre)",
+       title = "Which Neighborhoods Rise or Fall after the Shock?") +
+  theme_bw()
+```
+
+Turning from ranks to absolute averages reveals how neighborhoods change in levels rather than relative position. While gentrification is defined as a change in rank — an upgrading relative to other neighborhoods — changes in average neighborhood characteristics are still meaningful for residents even when the rank is unchanged. When the intervention affects only population density and not the income distribution, the average change is zero across all neighborhoods.
+
+When income inequality changes, the total change in neighborhood averages also cancels out, because the different income distributions share the same mean by design (see the robustness checks on inequality). When inequality increases, the neighborhoods with the highest average income, status, quality and rent gain further, while those with low or middling averages deteriorate. The decline tends to be steepest for below-average neighborhoods, while the lowest-ranked neighborhoods deteriorate only slightly. When inequality decreases, this pattern reverses: the highest-ranked neighborhoods see a decline while others stay similar or improve.
+
+
+## Which neighborhoods change?
+
+The preceding plots have shown that neighborhood rank rarely changes conditional on pre-intervention rank. While we might have expected lower-income neighborhoods to upgrade and show a positive change in income rank, this is not the case on average. Because rank change is zero-sum, however, some neighborhoods must rise while others fall — and indeed, some variation in rank change is visible, particularly among mid-ranked neighborhoods. The question is whether this variation is systematic: do specific types of neighborhoods consistently rise or fall?
+
+The empirical literature suggests that neighborhoods with relatively high-status but low-income residents, and in spatial proximity to already attractive neighborhoods, are most likely to gentrify. For neighborhood decay, the reverse applies: demand drops should first affect neighborhoods that are relatively expensive but comparably less attractive. Evidence of this mechanism in the model would indicate that it can reproduce selective neighborhood change after a demand shock.
+
+Each model regresses the change in neighborhood income or status rank (new equilibrium minus pre-intervention, averaged within run) on the pre-intervention income rank (controlling for regression to the mean) and the interaction of pre-intervention status rank with pre-intervention rent rank. The interaction is the core gentrification term: the empirical literature identifies neighborhoods with high social status but low rents as the prototypical gentrification target — desirable enough to attract higher-income newcomers but still affordable enough that they have not yet been priced in. If this mechanism operates in the model, the positive effect of status rank on subsequent rank gains should be strongest when rent rank is low, diminishing as rent rank rises. The expected sign of the interaction is therefore **negative**. Models are estimated separately for each of the 9 intervention scenarios with sample-id fixed effects and clustered standard errors. The coefficient plot below shows point estimates and 99% confidence intervals for all main and interaction effects.
+
+```{r rank-coefplot, out.width="100%"}
+rank_coef_data <- bind_rows(
+  lapply(c(1, 2, 3), function(d) {
+    lapply(c(0.85, 0.90, 0.95), function(rho) {
+      dat <- rank_change %>% filter(post_distribution == d, post_density == rho)
+      bind_rows(
+        tidy(feols(change_rank_inc    ~ ave_rank_inc_pre + ave_rank_status_pre * ave_rank_rent_pre | sample_id, data = dat, cluster = ~sample_id), conf.int = TRUE, conf.level = 0.99) %>% mutate(outcome = "Income rank"),
+        tidy(feols(change_rank_status ~ ave_rank_inc_pre + ave_rank_status_pre * ave_rank_rent_pre | sample_id, data = dat, cluster = ~sample_id), conf.int = TRUE, conf.level = 0.99) %>% mutate(outcome = "Status rank")
+      ) %>% mutate(post_distribution = d, post_density = rho)
+    }) %>% bind_rows()
+  }) %>% bind_rows()
+) %>%
+  mutate(
+    term = recode(term,
+      "ave_rank_inc_pre"                      = "Income rank",
+      "ave_rank_status_pre"                   = "Status rank",
+      "ave_rank_rent_pre"                     = "Rent rank",
+      "ave_rank_status_pre:ave_rank_rent_pre" = "Status × Rent"
+    ),
+    term    = factor(term,    levels = c("Income rank", "Status rank", "Rent rank", "Status × Rent")),
+    outcome = factor(outcome, levels = c("Income rank", "Status rank"))
+  )
+
+ggplot(rank_coef_data) +
+  aes(x = estimate, y = term, colour = outcome) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+  geom_point(position = position_dodge(width = 0.6)) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high),
+                 height = 0,
+                 position = position_dodge(width = 0.6)) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Coefficient (change in rank)", y = "", colour = "Outcome") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The main effects of the income and status rank pre-intervention on the change in rank are always negative which indicates regression to the mean: neighborhoods at the top of the income distribution tend to gain less (or lose more) than those below. However, pre-intervention rent consistently offsets this compression with a positive coefficient. Because rent is primarily determined by housing quality (households value housing quality more than neighborhood status), it is therefore slow to change (inertia parameter $b = 0.95$). High-rent neighborhoods resist the regression-to-the-mean and maintain or improve their income position. Rent and housing quality stabilize the neighborhood hierarchy.
+
+The interaction terms between pre-intervention status and rent — the gentrification term — is zero throughout all models. What the model produces is instead distributional amplification: demand shocks stretch or compress the existing distribution of neighborhood averages without altering which neighborhood sits where in the hierarchy as seen in the plots above. There is not a cross-dimension effect that has been hidden in the plots.
+
+But why does the model not produce gentrification in response to the demand shocks? Gentrification requires a neighborhood that is desirable (high status or good quality) but low rent ("rent gap"). In the model's spatial equilibrium, this gap is fully closed: segregation levels are very high and therefore, neighborhood characteristics correlate highly. It is likely that the continuous, proportional investment response of landlords ensures that housing quality — and therefore rent — tracks neighborhood status without threshold effects or coordination failure. Neighborhoods cannot be stuck in a low-investment trap, so no undervalued high-potential areas exist for a demand shock to selectively trigger. The model captures the gentrification *mechanism* as a process of equilibration during initial city formation, but its scope condition is that it abstracts from the frictions — discrete investments with threshold effects, coordination failure, historical path dependencies, and pioneer households with high status but low income — that sustain rent gaps in real cities and make them selectively vulnerable to demand-shock-driven neighborhood upgrading. Because all neighborhoods are equally responsive to demand shocks, the intervention results in a uniform effect across all neighborhoods while it remains the neighborhood hierarchy intact.
+
+
+# Vacancies
+
+```{r vacancies-timeseries}
+nb_data %>%
+  group_by(post_distribution, post_density, sample_id, t) %>%
+  summarise(gini_vacant = Gini(ave_vacant), .groups = "drop") %>%
+  group_by(post_distribution, post_density, t) %>%
+  summarise(gini_vacant = mean(gini_vacant), .groups = "drop") %>%
+  ggplot() +
+  aes(x = t, y = gini_vacant) +
+  geom_line() +
+  geom_vline(xintercept = unique(nb_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Time", y = "Gini of NB Vacancy Rate") +
+  theme_bw()
+
+city_data %>%
+  group_by(post_distribution, post_density, t) %>%
+  summarise(vacancy_seg = mean(vacancy_seg), .groups = "drop") %>%
+  ggplot() +
+  aes(x = t, y = vacancy_seg) +
+  geom_line() +
+  geom_vline(xintercept = unique(city_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Time", y = "Theil Index (Vacancy Segregation)") +
+  theme_bw()
+```
+
+Vacancies are unevenly distributed across neighborhoods. When overall population density decreases, neighborhood vacancy inequality falls; when density increases, it rises. This shift in inequality does not, however, imply a change in the spatial distribution of vacancies, since vacancy segregation remains stable. Only when density increases does vacancy segregation decrease temporarily at the transition: newly added households are placed on random vacant units, which are concentrated in high-vacancy neighborhoods, momentarily evening out the spatial distribution. Once these households leave their initial units and sort according to their preferences and budget constraints, the prior pattern is restored. Income inequality has no bearing on vacancy inequality or segregation.
+
+
+## Properties of Neighborhoods by Vacancy Rate
+
+```{r vacancies-nb-properties}
+ggplot(nb_data_periods) +
+  aes(x = ave_inc, y = ave_vacant, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Average NB Income", y = "Neighborhood Vacancy Rate", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data_periods) +
+  aes(x = ave_status, y = ave_vacant, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Average NB Status", y = "Neighborhood Vacancy Rate", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data_periods) +
+  aes(x = ave_rent, y = ave_vacant, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Average NB Rent", y = "Neighborhood Vacancy Rate", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb_data_periods) +
+  aes(x = ave_quality, y = ave_vacant, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Average NB Housing Quality", y = "Neighborhood Vacancy Rate", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As established in the main analysis, most neighborhoods have few or no vacancies, with vacancies concentrated in the cheapest and least desirable neighborhoods. When overall population density changes, neighborhood vacancy rates adjust accordingly: higher post-intervention density means lower vacancy rates, and vice versa.
+
+
+# Individual Level
+
+## Residential Mobility
+
+```{r mobility-data}
+mobility_data <- unit_data %>%
+  filter(!is.na(hh_id)) %>%
+  arrange(sample_id, hh_id, t) %>%
+  mutate(pos   = paste(x, y, sep = "_"),
+         moved = if_else(pos == Lag(pos),                           "stayed",            NA_character_),
+         moved = if_else(pos != Lag(pos) & Lag(rent > hh_income),  "forced to move",    moved),
+         moved = if_else(pos != Lag(pos) & Lag(rent <= hh_income), "moved voluntarily", moved),
+         period = case_when(
+           t < intervention_time        ~ "Pre-Intervention",
+           t < intervention_time + 50  ~ "Transition",
+           t >= intervention_time + 150 ~ "New Equilibrium"
+         ),
+         period = factor(period,
+                         levels = c("Pre-Intervention", "Transition", "New Equilibrium")))
+```
+
+Gentrification is often linked to residential mobility, and in particular to the forced displacement of low-income households. Empirical studies question this link, however, finding no elevated mobility in gentrifying neighborhoods (Freeman, 2005; Ding et al., 2016). Turnover appears to occur not through forced displacement but through naturally occurring vacancies being filled by higher-income newcomers.
+
+
+```{r mobility-timeseries}
+mobility_data %>%
+  group_by(post_distribution, post_density, t) %>%
+  summarise(forced    = mean(moved == "forced to move",    na.rm = TRUE),
+            voluntary = mean(moved == "moved voluntarily", na.rm = TRUE),
+            .groups = "drop") %>%
+  filter(t > min(t)) %>%
+  pivot_longer(cols = c("forced", "voluntary"),
+               names_to = "type", values_to = "proportion") %>%
+  mutate(type = if_else(type == "forced", "Forced to Move", "Moved Voluntarily")) %>%
+  ggplot() +
+  aes(x = t, y = proportion, colour = type, group = type) +
+  geom_line() +
+  geom_vline(xintercept = unique(unit_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Time", y = "Proportion of Households", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+There is no discontinuity in residential mobility after the intervention, either for forced or voluntary moves. Only when population density increases — with many new households placed on random empty units — is there a temporary spike in forced mobility, driven by households assigned to units with rents above their income.
+
+
+```{r mobility-by-income}
+prob_mobility <- mobility_data %>%
+  filter(!is.na(period)) %>%
+  group_by(sample_id, post_distribution, post_density, period, hh_id) %>%
+  summarise(prob_forced    = mean(moved == "forced to move",    na.rm = TRUE),
+            prob_voluntary = mean(moved == "moved voluntarily", na.rm = TRUE),
+            hh_income      = mean(hh_income),
+            hh_status      = mean(hh_status),
+            .groups = "drop")
+
+ggplot(prob_mobility) +
+  aes(x = hh_income, y = prob_forced, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Forced Move", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(prob_mobility) +
+  aes(x = hh_income, y = prob_voluntary, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Voluntary Move", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(prob_mobility) +
+  aes(x = hh_status, y = prob_forced, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Forced Move", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(prob_mobility) +
+  aes(x = hh_status, y = prob_voluntary, colour = period) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Voluntary Move", colour = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The probability of moving is also stable across the three analytic periods. The poorest households are most likely to be forced to move in any period, while voluntary mobility is more common overall and most frequent among low- to middle-income households.
+
+Taken together, the residential mobility results provide no evidence of gentrification following the intervention.
+
+
+## Rent Burden
+
+```{r rent-burden-timeseries}
+unit_data %>%
+  filter(!is.na(hh_id)) %>%
+  group_by(post_distribution, post_density, t) %>%
+  summarise(prop_unaffordable = mean(rent > hh_income, na.rm = TRUE),
+            .groups = "drop") %>%
+  ggplot() +
+  aes(x = t, y = prop_unaffordable) +
+  geom_line() +
+  geom_vline(xintercept = unique(unit_data$intervention_time),
+             linetype = "dashed", colour = "grey40") +
+  facet_grid(rows = vars(post_density),
+             cols = vars(post_distribution),
+             labeller = label_both) +
+  labs(x = "Time", y = "Proportion of Households where Rent > Income") +
+  theme_bw()
+```
+
+The proportion of households paying more rent than their income mirrors the forced mobility results. There is no discontinuity in affordability after the intervention, with the exception of a brief spike when density increases and new households are placed randomly on units they cannot afford.
+
+
+# Literature
+
+Blasius, Jörg, Jürgen Friedrichs, and Heiko Rühl. 2016. “Pioneers and Gentrifiers in the Process of Gentrification.” International Journal of Housing Policy 16(1):50–69. doi:10.1080/14616718.2015.1071029.
+
+Ding, Lei, Jackelyn Hwang, and Eileen Divringi. 2016. “Gentrification and Residential Mobility in Philadelphia.” Regional Science and Urban Economics 61:38–51. doi:10.1016/j.regsciurbeco.2016.09.004.
+
+Freeman, Lance. 2005. “Displacement or Succession?: Residential Mobility in Gentrifying Neighborhoods.” Urban Affairs Review 40(4):463–91. doi:10.1177/1078087404273341.
+
+Guerrieri, Veronica, Daniel Hartley, and Erik Hurst. 2013. “Endogenous Gentrification and Housing Price Dynamics.” Journal of Public Economics 100:45–60. doi:10.1016/j.jpubeco.2013.02.001.
+
+Owens, Ann. 2012. “Neighborhoods on the Rise: A Typology of Neighborhoods Experiencing Socioeconomic Ascent.” City & Community 11(4):345–69. doi:10.1111/j.1540-6040.2012.01412.x.

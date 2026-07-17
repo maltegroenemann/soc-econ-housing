@@ -1,0 +1,610 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part 3h: Analysis of the NetLogo Model"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width="50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(ggplot2)
+library(modelsummary)
+```
+
+
+# Experiment Description
+
+## Data
+
+This document analyses data generated from the NetLogo implementation of the model. This serves to make sure that there are no (major) errors in the Python scripts for the model. The data analysed here are based on a simulation experiment that is essentially a reduced variant of the main experiment with a 30x30 grid, a 0.85 population density, a Beta(2, 5) distribution for income and status and a turnover of 2 percent. I vary the correlation and preferences preferences with 3 levels (0, 0.5, 1 and 0, 0.25, 1, respectively) and the b_inertia parameter with 2 levels (0.95, 0.8). Every of the 9 parameter combinations are repeated 10 times, therefore I simulate 180 independent runs that go for 200 steps of which I disgard the first 100 as burn-in. 30 x 30 x 180 runs x 100 analysed steps result in about 16 million observations of housing units.
+
+The data preparation was performed on the Helix HPC but the analysis in this notebook is executeable on local hardware (16GB RAM, 8 cores i5).
+
+## Summary of Results
+
+The model seems robust against the choice of programming language. I do not identify any substantial differences to the Python model in the figures below.
+
+
+```{r unit_data}
+# load data -> raw CSV output has already been processed and saved to parquet files similar to the other experiments
+unit_data <- read_parquet("./data/unit_data.parquet")
+nb_data <- read_parquet("./data/nb_data.parquet")
+city_data <- read_parquet("./data/city_data.parquet")
+```
+
+
+# City-Level
+
+## Segregation 
+
+```{r seg_4, out.width="100%"}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg", "hh_income", dimension),
+         dimension = if_else(dimension == "status_seg", "hh_status", dimension),
+         dimension = if_else(dimension == "quality_seg", "housing_quality", dimension),
+         dimension = if_else(dimension == "rent_seg", "rent", dimension),
+         dimension = if_else(dimension == "vacancy_seg", "vacancy", dimension))
+
+seg_long %>%
+  filter(dimension != "vacancy") %>%
+  group_by(a_utility, r_correlation, b_inertia, dimension) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = a_utility,
+      y = segregation,
+      colour = dimension,
+      group = dimension) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(title = "", y = "H^R") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+
+
+## Inequality
+
+```{r ineq}
+unit_data %>% 
+  filter(t == 150) %>%
+  ggplot() +
+  aes(x = rent, 
+      fill = as.factor(b_inertia)) +
+  geom_histogram(alpha = 0.6, position = 'identity') +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(title = "t = 150", fill = "b_inertia", x = "Rent") +
+  theme_bw()
+
+unit_data %>% 
+  filter(t == 150) %>%
+  ggplot() +
+  aes(x = housing_quality, 
+      fill = as.factor(b_inertia)) +
+  geom_histogram(alpha = 0.6, position = 'identity') +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(title = "t = 150", fill = "b_inertia", x = "Housing housing_quality") +
+  theme_bw()
+
+city_data %>%
+  ggplot() +
+  geom_bar(aes(x = "Rent", y = rent_gini, fill = as.factor(b_inertia)),
+           stat = "summary", fun.y = "mean", position = "dodge") +
+  geom_bar(aes(x = "housing_quality", y = quality_gini, fill = as.factor(b_inertia)),
+           stat = "summary", fun.y = "mean", position = "dodge") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "", y = "Gini Index", fill = "b_inertia",
+       title = "City-level Inequality") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+# Neighborhood Level
+
+```{r nb4_descr}
+nb_data %>% 
+  filter(t == 150) %>%
+  ggplot() +
+  aes(x = ave_inc, 
+      fill = as.factor(b_inertia)) +
+  geom_histogram(alpha = 0.6, position = 'identity') +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(title = "t = 150", fill = "b_inertia", x = "Average Neighborhood Income") +
+  theme_bw()
+
+nb_data %>% 
+  filter(t == 150) %>%
+  ggplot() +
+  aes(x = ave_status,
+      fill = as.factor(b_inertia)) +
+  geom_histogram(alpha = 0.6, position = 'identity') +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(title = "t = 150", fill = "b_inertia", x = "Average Neighborhood Status") +
+  theme_bw()
+```
+
+
+## Housing Quality and Rent
+
+
+```{r nb4_hists}
+nb_data %>% 
+  filter(t == 150) %>%
+  ggplot() +
+  aes(x = ave_quality, 
+      fill = as.factor(b_inertia)) +
+  geom_histogram(alpha = 0.6, position = 'identity') +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(title = "t = 150", fill = "b_inertia", x = "Average Neighborhood Housing Quality") +
+  theme_bw()
+
+nb_data %>% 
+  filter(t == 150) %>%
+  ggplot() +
+  aes(x = ave_rent, 
+      fill = as.factor(b_inertia)) +
+  geom_histogram(alpha = 0.6, position = 'identity') +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(title = "t = 150", fill = "b_inertia", x = "Average Neighborhood Rent") +
+  theme_bw()
+```
+
+## Neighborhood Stability
+
+
+```{r nb4_stability}
+stability_data <- nb_data %>%
+  group_by(sample_id, r_correlation, a_utility, b_inertia, nb) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent))
+
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      colour = as.factor(b_inertia)) +
+  geom_point(size = 0.1) +
+  geom_smooth() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income",
+       colour = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      colour = as.factor(b_inertia)) +
+  geom_point(size = 0.1) +
+  geom_smooth() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status",
+       colour = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      colour = as.factor(b_inertia)) +
+  geom_point(size = 0.1) +
+  geom_smooth() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Quality",
+       colour = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      colour = as.factor(b_inertia)) +
+  geom_point(size = 0.1) +
+  geom_smooth() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent",
+       colour = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+# Vacant Housing
+
+
+```{r descr_vac}
+nb_data %>% 
+  filter(t == 150) %>%
+  ggplot() +
+  aes(x = 1 - ave_vacant,
+      fill = as.factor(b_inertia)) +
+  geom_histogram(alpha = 0.6, position = 'identity') +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(title = "t = 150, 4x4 Neighborhoods", fill = "b_inertia",
+       x = "Average Neighborhood Vacancy Rate") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+## Segregation
+
+```{r unit_data_vacancy}
+ggplot(city_data) +
+  aes(x = as.factor(b_inertia),
+      y = vacancy_seg,
+      fill = as.factor(b_inertia)) +
+  geom_bar(stat = "summary", fun.y = "mean") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "", y = "Theil Index", fill = "b_inertia",
+       title = "Vacancy Segregation") +
+  scale_x_discrete(breaks = NULL) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+## Neighborhood Characteristics
+
+
+```{r character_empty}
+nb_data %>%
+  filter(b_inertia == 0.95) %>%
+  ggplot() +
+  geom_smooth(aes(x = ave_inc,
+                  y = ave_vacant,
+                  colour = "Income")) +
+  geom_smooth(aes(x = ave_status,
+                  y = ave_vacant,
+                  colour = "Status")) +
+  geom_smooth(aes(x = ave_quality,
+                  y = ave_vacant,
+                  colour = "Quality")) +
+  geom_smooth(aes(x = ave_rent,
+                  y = ave_vacant,
+                  colour = "Rent")) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "", y = "Neighborhood Vacancy Rate", 
+       colour = "", title = "b_inertia == 0.95") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+nb_data %>%
+  filter(b_inertia == 0.8) %>%
+  ggplot() +
+  geom_smooth(aes(x = ave_inc,
+                  y = ave_vacant,
+                  colour = "Income")) +
+  geom_smooth(aes(x = ave_status,
+                  y = ave_vacant,
+                  colour = "Status")) +
+  geom_smooth(aes(x = ave_quality,
+                  y = ave_vacant,
+                  colour = "Quality")) +
+  geom_smooth(aes(x = ave_rent,
+                  y = ave_vacant,
+                  colour = "Rent")) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "", y = "Neighborhood Vacancy Rate", 
+       colour = "", title = "b_inertia == 0.8") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+## Neighborhood Stability
+
+```{r stab_vac}
+nb_data %>%
+  group_by(sample_id, r_correlation, a_utility, b_inertia, nb) %>%
+  summarise(ave_rank_vac = mean(rank_vacant),
+            sd_rank_vac = sd(rank_vacant)) %>%
+  ggplot() +
+  aes(x = ave_rank_vac,
+      y = sd_rank_vac,
+      colour = as.factor(b_inertia)) +
+  geom_point(size = 0.1) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Average Neighborhood Rank by Vacancy Rate",
+       y = "SD of Rank by Vacancy Rate", colour = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+# Individual Level
+
+## Housing Inequality by Income
+
+```{r indiv}
+unit_data %>%
+  filter(b_inertia == 0.95) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = housing_quality) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Housing Quality",
+       title = "b_inertia == 0.95") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(b_inertia == 0.8) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = housing_quality) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Housing Quality",
+       title = "b_inertia == 0.8") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(b_inertia == 0.95) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = rent) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Rent",
+       title = "b_inertia == 0.95") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(b_inertia == 0.8) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = rent) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Rent",
+       title = "b_inertia == 0.8") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(b_inertia == 0.95) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = log(rent / hh_income)) +
+  geom_bin_2d() +
+  geom_hline(yintercept = 1, colour = "red") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Log(Rent/Income)",
+       title = "b_inertia == 0.95") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(b_inertia == 0.8) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = log(rent / hh_income)) +
+  geom_bin_2d() +
+  geom_hline(yintercept = 1, colour = "red") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Log(Rent/Income)",
+       title = "b_inertia == 0.8") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+## Housing Inequality by Status
+
+```{r hh_status_housing_quality}
+unit_data %>%
+  filter(b_inertia == 0.95) %>%
+  ggplot() +
+  aes(x = hh_status,
+      y = housing_quality) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Status", y = "Housing Quality",
+       title = "b_inertia == 0.95") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(b_inertia == 0.8) %>%
+  ggplot() +
+  aes(x = hh_status,
+      y = housing_quality) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Status", y = "Housing Quality",
+       title = "b_inertia == 0.95") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+
+```{r reg_housing_quality}
+reg_housing_quality <- unit_data %>%
+  nest_by(a_utility, r_correlation, b_inertia) %>%
+  mutate(trivariate = list(lm(data = data, housing_quality ~ hh_income + hh_status))) %>%
+  reframe(tidy(trivariate)) %>%
+  filter(r_correlation != 1 & term == "hh_status") %>%
+  select(-statistic, -p.value) %>%
+  rename(beta = estimate,
+         se = std.error)
+
+ggplot(reg_housing_quality) +
+  aes(x = a_utility,
+      y = beta,
+      ymin = beta - 3.1 * se,
+      ymax = beta + 3.1 * se) +
+  geom_line() +
+  geom_errorbar(width = 0.01, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0,
+             colour = "red") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "a_utility", y = "Coefficient of Status w. 99.9% CI",
+       title = "Linear Regression of Housing Quality on Status and Income") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+## Neighborhood Inequality
+
+
+```{r nb_ineq}
+unit_data %>%
+  filter(b_inertia == 0.95) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = ave_status) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Sncome", y = "Average Neighborhood Status",
+       title = "b_inertia == 0.95") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(b_inertia == 0.8) %>%
+  ggplot() +
+  aes(x = ave_status,
+      y = housing_quality) +
+  geom_bin_2d() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Average Neighborhood Status",
+       title = "b_inertia == 0.8") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+
+# Residential Mobility
+
+
+```{r res_mob}
+indiv_data <- unit_data %>%
+  filter(!is.na(hh_id)) %>%
+  arrange(sample_id, r_correlation, a_utility, b_inertia, hh_id, t) %>%
+  group_by(sample_id, r_correlation, a_utility, b_inertia, hh_id) %>%
+  summarise(prob_move_unit = mean(x_coord != Lag(x_coord) & y_coord != Lag(y_coord), na.rm = TRUE),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status)) %>%
+  ungroup()
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_unit,
+      colour = as.factor(b_inertia)) +
+  geom_smooth() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving", colour = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_unit,
+      colour = as.factor(b_inertia)) +
+  geom_smooth() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_utility),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving", colour = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```

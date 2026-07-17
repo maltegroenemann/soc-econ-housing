@@ -1,0 +1,22 @@
+\begin{table}[h!]
+  \centering
+  \caption{Parameters of the Main Computational Experiment}
+  \begin{tabularx}{\textwidth}{l l X}
+    \hline
+    \textbf{Parameter} & \textbf{Values} & \textbf{Description} \\
+    \hline
+    $a$ & 0, 0.25, 0.5, 0.75, 1 & The importance of neighborhood social status relative 						to the importance of housing quality in households' 							utility function. 0 means only housing quality 									matters, 1 implies that only neighborhood status 								matters. See equation \ref{eq:util}. \\
+    $r$ &  0, 0.25, 0.5, 0.75, 1 & Correlation of households' income and social status. 						When $r$ is 1 , status and income are identical. See 							equation \ref{eq:soc}. \\
+    $b$ & 0, 0.8, 0.95, 0.98, 1 & Inertia of housing quality. $b$ gives the proportion of 			housing quality that is retained from one time step to the next. See equation 					\ref{eq:quality}. \\
+    turnover & 0.02 & This parameter introduces noise to the model via 							population dynamics. It is the percentage of households that move out of the city. A corresponding number of households move into the city to keep the population constant. This parameter is varied in robustness check D.\\
+    distribution & 2 & This value determines the shape of the Beta distribution used to sample household income and status. These variables are sampled from a 	Beta(distribution, 2.5 x distribution) probability density function to model different levels of inequality in income and status. This parameter is varied in robustness check E.\\
+    vision & 1 & Size of the Moore neighborhoods agents consider when calculating average status and rent during the simulation. This parameter is varied in robustness check F. \\
+    density & 0.85 & Population density: which proportion of the housing units are occupied by households. This parameter is varied in robustness check G. \\
+    size & 30 & Edge length of the grid. This parameter is varied in robustness check G. \\
+    size\_nb & 5 & Edge length of the neighborhoods which are used to calculate segregation indices and neighborhood averages in the analysis. This parameter is varied in robustness check F.\\
+    steps & 400 & The number of time steps the simulations run. \\
+    iterations & 15 & Number of times each combination of parameters is run.\\
+    \hline
+    \end{tabularx}%    
+  \label{tab:parameters}%
+\end{table}%

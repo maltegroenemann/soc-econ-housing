@@ -1,0 +1,843 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIf: Analysis of the Vision Experiment"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(Hmisc)
+library(ggplot2)
+library(fixest)
+library(modelsummary)
+
+data_directory <- "./data/vision/" # TODO change directory
+
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+nb3_data <- read_parquet(paste(data_directory, "nb_3_data.parquet", sep = ""))
+nb5_data <- read_parquet(paste(data_directory, "nb_5_data.parquet", sep = ""))
+nb10_data <- read_parquet(paste(data_directory, "nb_10_data.parquet", sep = ""))
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+```
+
+# Experiment Description
+
+## Motivation and Parameters
+
+In their paper, Laurie and Jaggi (2003) have established that in categorical segregation models, it makes a difference what agents consider their neighborhood. Although their claim that, depending on vision, segregation might not occur at all was shown to be a specificity of their simulation setup (Fossett and Waren, 2005), they additionally find that segregation tends to form larger clusters when vision increases. Before, I have used a Moore neighborhood of distance 1, which refers to the eight bordering (including diagonally) cells. Using the vision parameter, I can increase this distance. I vary it between 1 (8 neighbors), 2 (24 neighbors), and 3 (48 neighbors).
+ 
+This also lends itself to examining the scale of segregation, which has been of interest to scholars (Lee et al. 2008, Reardon et al. 2008, Reardon and Bischoff 2011). To limit computational costs, I analyze the scale of segregation with aspatial segregation indices (the rank-order information theory index) for 3x3, 5x5, and 10x10 neighborhoods. While the computational costs of the approach by Reardon et al. (2008), which calculates spatial segregation indices for bespoke neighborhoods of varying sizes around each household, would be manageable for one or a few cities at a single point in time, this becomes very costly for a computational experiment with millions of observations. 
+
+The model simulates a 30x30 grid and uses 3 x 3 x 3 = 27 levels of the initial parameters, in addition to 3 levels of vision. The model repeats every combination 10 times, so the experiment consists of 27 x 3 x 10 = 810 runs of 200 steps. The output results in 30 x 30 x 540 x 200 = 1.458 x 10^8 observations of housing units, of which I analyze 7.29 x 10^7.
+
+Existing studies on the scale of segregation typically considered racial/ethnic segregation. To my knowledge, only Reardon and Bischoff (2011) have analysed income segregation at different scales. They find that "upper-income households are much more segregated at a large geographic scale than lower-income households. For high-income households, 60% or more of segregation patterns are due to macro-scale segregation, presumably the concentration of high-income households in wealthy suburban and exurban areas. For low-income households, 40% or less of segregation patterns are due to macro-scale segregation; this implies that the poor are less concentrated spatially than the wealthy in most metropolitan areas" (p. 1125). They also find that the increasing macro-scale segregation of affluent households almost exclusively drives the effect of income inequality on income segregation.
+
+
+## Results Summary
+
+Segregation decreases with larger neighborhoods used to calculate segregation indices. I expected this, as the within-neighborhood variation in resident characteristics necessarily falls with larger neighborhoods. A higher vision, where households and landlords consider a larger area around a unit as their relevant neighborhood, increases overall segregation and, particularly, macro-scale segregation. It also makes neighborhoods more stable over time and reduces residential mobility because moves from a single household have a smaller effect on the neighborhood if it is larger.
+
+Higher vision increases the requirements households have for their neighborhood: not only do they want to live next to the eight highest-status neighbors they can afford, but the best 24 or 48 neighbors. Similarly, to convince a landlord of the profitability of an investment, rents in the broader area need to rise. Such requirements for the desirability of a neighborhood or investment decisions can only be fulfilled in larger, more homogenous neighborhoods. With higher inertia, a change in the neighborhood needs to be greater to result in the same investment. Therefore, with lower inertia, landlords can invest more easily and compensate for differences in neighborhoods, leading to lower segregation. In contrast, more inertia increases the importance of the neighborhood. As a result, the effect of vision is greater with more inertia.
+
+Regarding macro-scale versus micro-scale segregation, other parameters also influence the ratio. In the chase game where there is only little segregation (low correlation and households choose units primarily for the neighborhood), the little segregation that emerges is more micro-scale. Segregation is also more local when inertia is high and households primarily value housing quality. Housing quality and rent also tend to exhibit a higher proportion of macro-segregation generally. This could be because landlords only react to the neighborhood, whereas households react to the neighborhood and the unit, which can substitute for each other in their utility calculation. This explains why there is more macro-scale segregation when households primarily value housing quality and why there is more micro-scale segregation when only the neighborhood matters to households.
+
+
+# City Level
+
+## Segregation Indices by Vision
+
+Based on the original 5x5 neighborhoods.
+
+
+```{r}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = contains("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = str_replace(dimension, "_seg_", "_"),
+         size_nb = as.integer(str_extract(dimension, "([^_]+)$")),
+         dimension = str_extract(dimension, "^[^_]*"),
+         dimension = if_else(dimension == "inc", "income", dimension))
+
+seg_long %>%
+  filter(dimension != "income" & size_nb == 5) %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = vision,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Income Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension != "status" & size_nb == 5) %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = vision,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Status Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension != "quality" & size_nb == 5) %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = vision,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Housing Quality Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension != "rent" & size_nb == 5) %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = vision,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Rent Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The images consistently show that a higher vision parameter, which means that landlords and households consider a larger area around their housing unit as their neighborhood, increases segregation when measured with 5x5 neighborhoods. The increase is larger for lower values of b_inertia.
+
+```{r}
+modelsummary(list(
+  feols(data = city_data,
+        inc_seg_5 ~ a_preferences * r_correlation + a_preferences * b_inertia + vision,
+        cluster = "sample_id"),
+  feols(data = city_data,
+        inc_seg_5 ~ a_preferences * r_correlation + a_preferences * b_inertia + b_inertia * vision,
+        cluster = "sample_id")
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001), 
+  gof_map = c("nobs", "r.squared", "bic"))
+```
+
+The regression above estimates the best-fitting model of the original parameters on income segregation (measured with 5x5 neighborhoods, SEs clustered by sample ID) from the main analysis and adds vision as a parameter. As established previously, Model 1 indicates that greater vision is associated with increased income segregation. Cities tend to be more segregated when households and landlords consider a larger area their relevant neighborhood. Model 2 supports the impression that vision interacts with b_inertia. As b_inertia is at least 0.8 in this experiment, the partial effect of vision is always positive, as the interaction effect times 0.8 is greater than the now negative main effect. Nevertheless, the effect of vision is more positive with higher values of inertia. Other interactions of parameters with vision are insignificant and omitted.
+
+Why does vision increase segregation? Higher vision increases the requirements households have for their neighborhood: not only do they want to live next to the eight highest-status neighbors they can afford, but the best 24 or 48 neighbors. Similarly, to convince a landlord of the profitability of an investment, rents in the broader area need to rise. Such requirements for the desirability of a neighborhood or investment decisions can only be fulfilled in larger, more homogenous neighborhoods (more macro-scale segregation, see below). As the clusters of residents become larger and the neighborhoods are more homogenous, segregation indices rise. The former is due to the arbitrariness of the neighborhoods for analysis: with fewer group boundaries, the probability that a 5x5 neighborhood spans both sides of such a boundary decreases. However, that segregation increases in this case makes sense, as households are more isolated from those with different characteristics.
+
+Housing quality and neighborhood status can act as substitutes for each other, given the Cobb-Douglas utility function. Therefore, a housing unit in a slightly worse neighborhood can provide the same utility as a unit in a better neighborhood if it has higher housing quality. With higher inertia, a change in the neighborhood needs to be greater to result in the same investment. Therefore, with lower inertia, landlords can invest more easily and compensate for differences in neighborhoods, leading to lower segregation. In contrast, more inertia increases the importance of the neighborhood, and therefore, the effect of vision is greater. This explains the interaction between vision and inertia.
+
+
+## Geographic Scale of Segregation
+
+Based on the original value for vision of 1, which corresponds to the eight neighboring units, I look at differences by scale.
+
+```{r}
+seg_long %>%
+  filter(dimension == "income" & vision == 1) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size_nb) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = size_nb,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Income Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "status" & vision == 1) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size_nb) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = size_nb,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Status Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "quality" & vision == 1) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size_nb) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = size_nb,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Housing Quality Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "rent" & vision == 1) %>%
+  group_by(a_preferences, r_correlation, b_inertia, size_nb) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = size_nb,
+      y = segregation,
+      colour = as.factor(b_inertia),
+      shape = as.factor(b_inertia)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Rent Segregation", y = "H^R", colour = "b_inertia", shape = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Segregation decreases with larger neighborhoods used to calculate segregation indices. I expected this, as the within-neighborhood variation in resident characteristics necessarily falls with larger neighborhoods. The effect does not differ by the parameters. 
+
+
+## Macro- vs. Micro-Scale Segregation
+
+There can be more or less segregation overall, but when segregation occurs, it can be primarily at small scales or large scales. Is there a small, affluent neighborhood adjacent to a small middle- or low-income neighborhood? Or are the rich and the poor as wide apart as possible, with the middle incomes in between, as a buffer? When measuring at a low scale, segregation indices will detect segregation regardless of the next neighborhood or whether larger patterns are present or not. When using larger units to measure segregation, small, distinct neighborhoods are summarized into one larger area, and differences between them average out. When larger patterns are present, they contribute to local segregation, allowing us to ask which proportion of small-scale segregation is due to large-scale segregation(see: Reardon et al 2008, Reardon and Bischoff 2011). I calculate the ratio between the segregation index calculated based on 10x10 and 3x3 neighborhoods. However, such a proportional measure can become unreliable when there is little segregation in general. 
+
+```{r}
+city_data <- city_data %>%
+  mutate(inc_macromicro = inc_seg_10 / inc_seg_3,
+         status_macromicro = status_seg_10 / status_seg_3,
+         quality_macromicro = quality_seg_10 / quality_seg_3,
+         rent_macromicro = rent_seg_10 / rent_seg_3)
+
+city_data %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(inc_macromicro = mean(inc_macromicro)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = inc_macromicro,
+      colour = as.factor(vision),
+      shape = as.factor(vision)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(title = "Income Segregation", y = "Macro- / Micro-Segregation", 
+       colour = "vision", shape = "vision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(status_macromicro = mean(status_macromicro)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = status_macromicro,
+      colour = as.factor(vision),
+      shape = as.factor(vision)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(title = "Status Segregation", y = "Macro- / Micro-Segregation", 
+       colour = "vision", shape = "vision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(quality_macromicro = mean(quality_macromicro)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = quality_macromicro,
+      colour = as.factor(vision),
+      shape = as.factor(vision)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(title = "Housing Quality Segregation", y = "Macro- / Micro-Segregation", 
+       colour = "vision", shape = "vision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(rent_macromicro = mean(rent_macromicro)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = rent_macromicro,
+      colour = as.factor(vision),
+      shape = as.factor(vision)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(title = "Rent Segregation", y = "Macro- / Micro-Segregation", 
+       colour = "vision", shape = "vision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+A larger vision consistently leads to more macro-segregation, although there appears to be a limit, with maximally about half of the micro-segregation being attributed to macro-segregation. Nevertheless, the other parameters also affect the ratio. In the chase game where there is only little segregation (low correlation and households choose units primarily for the neighborhood), the little segregation that emerges is more micro-scale. Segregation is also more local when inertia is high and households primarily value housing quality. Housing quality and rent also tend to exhibit a higher proportion of macro-segregation. This could be because landlords only react to the neighborhood, whereas households react to the neighborhood and the unit, which can substitute for each other in their utility calculation. This also explains why there is more macro-scale segregation when households primarily value housing quality and why there is more micro-scale segregation when only the neighborhood matters to households.
+
+```{r}
+modelsummary(list(
+  feols(data = city_data,
+        inc_macromicro ~ a_preferences + r_correlation + b_inertia,
+        cluster = "sample_id"),
+  feols(data = city_data,
+        inc_macromicro ~ a_preferences + r_correlation + b_inertia + vision,
+        cluster = "sample_id"),
+  feols(data = city_data,
+        inc_macromicro ~ a_preferences * b_inertia + r_correlation + b_inertia * vision,
+        cluster = "sample_id"),
+  feols(data = city_data,
+        quality_macromicro ~ a_preferences + r_correlation + b_inertia,
+        cluster = "sample_id"),
+  feols(data = city_data,
+        quality_macromicro ~ a_preferences + r_correlation + b_inertia + vision,
+        cluster = "sample_id"),
+  feols(data = city_data,
+        quality_macromicro ~ a_preferences * b_inertia + r_correlation + b_inertia * vision,
+        cluster = "sample_id")
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001), 
+  gof_map = c("nobs", "r.squared", "bic"))
+```
+
+The regressions above estimate the parameters and relevant interactions using the micro-macro proportion of income segregation (1-3) and housing quality (4-6) as dependent variables. With higher inertia, segregation occurs on a more micro-scale. This effect is smaller with higher a_preferences. Vision increases macro-scale segregation, and the effect is stronger with higher inertia. The general trends are similar compared between income segregation and spatial inequalities in housing quality.
+
+## Segregation Profiles
+
+This section is a brief follow-up to robustness check E on inequality. One potential reason that the affluent are not more segregated from the other groups is that there are too few affluent households to form very exclusive neighborhoods. If it is a critical mass argument, the absolute size of the city and therefore the number of affluent households matters. However, suppose the neighborhoods from the previous analysis are too large to capture the small pockets of affluent households. In that case, we should observe a U-shape in the segregation profiles from the 3x3 neighborhoods.
+
+```{r}
+## Defining Segregation Measures
+entropy <- function(p) {
+  e <- ifelse(p == 0 | p == 1, 
+              0, # 0 * log2(1 / 0) := 0; see Reardon et al (2006), p. 11
+              p * log2(1 / p) + (1 - p) * log2(1 / (1 - p)))
+  return(e)
+}
+
+# entropy for the percentile below a threshold of a distribution 
+# notation following Reardon and Bischoff (2011) p. 1110
+E_p <- function(variable, threshold) {
+  p <- mean(variable <= threshold, na.rm = TRUE)
+  return(entropy(p))
+}
+
+
+# Theil segregation index for a continuous variable and a single threshold
+H_p <- function(variable, neighborhoods, threshold){
+  # notation following Reardon and Bischoff (2011) p. 1111
+  # this function assumes that we have a dataset with a continuous variable of individuals in neighborhoods
+  df <- data.frame(variable = variable, neighborhoods = neighborhoods)
+  
+  entropy_total_E <- E_p(variable, threshold)
+  pop_total_T <- sum(is.na(variable) == FALSE)
+  
+  df_nb <- data.frame(nb_j = unique(neighborhoods),
+                      pop_tj = NA,
+                      entropy_Ej = NA)
+  for (j in 1:length(df_nb$nb_j)) {
+    temp <- subset(df, neighborhoods == df_nb$nb_j[j])
+    df_nb$pop_tj[j] = sum(is.na(temp$variable) == FALSE)
+    df_nb$entropy_Ej[j] = E_p(variable = temp$variable, threshold = threshold)
+  }
+  
+  relative_entropies <- (df_nb$pop_tj * df_nb$entropy_Ej) / (pop_total_T * entropy_total_E)
+  H_p <- 1 - sum(relative_entropies, na.rm = TRUE)
+  
+  return(H_p)
+}
+```
+
+
+```{r}
+seg_quantile <- unit_data %>%
+  filter(t == 150 & vision == 1) %>%
+  group_by(sample_id, a_preferences, r_correlation, b_inertia, 
+           hh_income, nb_3) %>%
+  reframe(decile = seq(.1, .9, by = .1))  %>%
+  ungroup() %>%
+  group_by(sample_id, a_preferences, r_correlation, b_inertia, decile) %>%
+  summarise(income_Hp = H_p(hh_income, nb_3, quantile(hh_income, decile, na.rm = TRUE)))
+
+
+ggplot(seg_quantile) +
+  aes(x = decile,
+      y = income_Hp,
+      colour = as.factor(a_preferences)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "a_preferences", 
+       linetype = "a_preferences", title = "Income Segregation by Quantiles") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+This segregation profile for income segregation by income quantile does not show a U-shape. The size of the neighborhoods is not the reason why we observe less segregation for more affluent households in the model, which contradicts empirical findings.
+
+
+# Neighborhood Level
+
+## Income and Status
+
+```{r}
+ggplot(nb3_data) +
+  aes(y = ave_inc, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Income (3x3)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb3_data) +
+  aes(y = ave_status, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Status (3x3)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb10_data) +
+  aes(y = ave_inc, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Income (10x10)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb10_data) +
+  aes(y = ave_status, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Status (10x10)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+When examining 3x3 neighborhoods, average income and status change barely with vision. Only in the 10x10 neighborhoods are neighborhood averages becoming more unequal with vision. As vision increases the scale of segregation, the difference in neighborhood averages of the 10x10 neighborhoods makes sense. For the 3x3 neighborhoods, it does not matter whether the adjacent neighborhoods are more similar or not.
+
+## Rent and Housing Quality
+
+```{r}
+ggplot(nb3_data) +
+  aes(y = ave_quality, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Housing Quality (3x3)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb3_data) +
+  aes(y = ave_rent, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Rent (3x3)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb10_data) +
+  aes(y = ave_quality, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Housing Quality (10x10)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb10_data) +
+  aes(y = ave_rent, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Rent (10x10)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+See above.
+
+## Neighborhood Stability
+
+When the definition of neighborhood in households' utility calculation and investments by landlords increases, moves from single households should present less of a shock to the neighborhood. It is therefore reasonable to expect that neighborhood stability increases with vision. The figures indeed show that, within each combination of the other parameters, higher vision is associated with greater stability (lower variance in neighborhood ranks), at least when there is no floor effect of very low variance in all conditions.
+
+### 3x3 Neighborhoods
+
+```{r}
+stability_data <- nb3_data %>%
+  group_by(sample_id, r_correlation, a_preferences, b_inertia, vision, nb_3) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent))
+
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Housing Quality",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+### 10x10 Neighborhoods
+
+```{r}
+stability_data <- nb10_data %>%
+  group_by(sample_id, r_correlation, a_preferences, b_inertia, vision, nb_10) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent))
+
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      shape = as.factor(a_preferences),
+      linetype = as.factor(a_preferences),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Housing Quality",
+       colour = "vision", linetype = "a_preferences", shape = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+# Vacant Housing
+
+
+```{r}
+city_data %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(vacancy_seg = mean(vacancy_seg_3)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = vacancy_seg,
+      colour = as.factor(vision)) +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation (3x3)", y = "Theil Index H",
+       colour = "vision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+city_data %>%
+  group_by(a_preferences, r_correlation, b_inertia, vision) %>%
+  summarise(vacancy_seg = mean(vacancy_seg_10)) %>%
+  ggplot() +
+  aes(x = a_preferences,
+      y = vacancy_seg,
+      colour = as.factor(vision)) +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation (10x10)", y = "Theil Index H",
+       colour = "vision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb3_data) +
+  aes(y = ave_vacant, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Vacancy Rate (3x3)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(nb10_data) +
+  aes(y = ave_vacant, 
+      x = as.factor(a_preferences),
+      fill = as.factor(vision)) +
+  geom_violin() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(b_inertia), 
+             labeller = label_both) +
+  labs(y = "Average NB Vacancy Rate (10x10)", fill = "vision", x = "a_preferences") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As with the other dimensions, vacancies tend to be more segregated when vision is higher. As vision increases segregation at the macro scale, vacancy rates in 10x10 neighborhoods are becoming more unequal.
+
+# Residential Mobility
+
+```{r}
+indiv_data <- unit_data %>%
+  filter(!is.na(hh_id)) %>%
+  arrange(sample_id, r_correlation, a_preferences, b_inertia, vision, hh_id, t) %>%
+  mutate(pos = paste(x, y, sep = "_")) %>%
+  group_by(sample_id, r_correlation, a_preferences, b_inertia, vision, hh_id) %>%
+  summarise(prob_move_unit = mean(pos != Lag(pos), na.rm = TRUE),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status)) %>%
+  ungroup()
+
+ggplot(indiv_data) +
+  aes(x = hh_income,
+      y = prob_move_unit,
+      linetype = as.factor(b_inertia),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Moving", colour = "vision",
+       shape = "b_inertia", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(indiv_data) +
+  aes(x = hh_status,
+      y = prob_move_unit,
+      linetype = as.factor(b_inertia),
+      colour = as.factor(vision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences),
+             labeller = label_both) +
+  labs(x = "Status", y = "Probability of Moving", colour = "vision",
+       shape = "b_inertia", linetype = "b_inertia") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Related to the results on neighborhood stability, vision decreases residential mobility in some parameter combinations.
+
+# References
+
+Fossett, Mark, and Warren Waren. 2005. “Overlooked Implications of Ethnic Preferences for Residential Segregation in Agent-Based Models.” Urban Studies 42(11):1893–1917. doi: 10.1080/00420980500280354.
+
+Laurie, Alexander J., and Narendra K. Jaggi. 2003. “Role of ‘Vision’ in Neighbourhood Racial Segregation: A Variant of the Schelling Segregation Model.” Urban Studies 40(13):2687–2704. doi: 10.1080/0042098032000146849.
+
+Lee, Barrett A., Sean F. Reardon, Glenn Firebaugh, Chad R. Farrell, Stephen A. Matthews, and David O’Sullivan. 2008. “Beyond the Census Tract: Patterns and Determinants of Racial Segregation at Multiple Geographic Scales.” American Sociological Review 73(5):766–91. doi:10.1177/000312240807300504.
+
+Östh, John, William A. V. Clark, and Bo Malmberg. 2015. “Measuring the Scale of Segregation Using K-Nearest Neighbor Aggregates.” Geographical Analysis 47(1):34–49. doi:10.1111/gean.12053.
+
+Reardon, Sean F., and Kendra Bischoff. 2011. “Income Inequality and Income Segregation.” American Journal of Sociology 116(4):1092–1153. doi: 10.1086/657114.
+
+Reardon, Sean F., Stephen A. Matthews, David O’Sullivan, Barrett A. Lee, Glenn Firebaugh, Chad R. Farrell, and Kendra Bischoff. 2008. “The Geographic Scale of Metropolitan Racial Segregation.” Demography 45(3):489–514. doi:10.1353/dem.0.0019.

@@ -1,0 +1,99 @@
+\section{The Agent-based Model}
+
+I formalize the theoretical argument in an agent-based model \citep{macyFactorsActorsComputational2002, axtellAgentBasedModelingEconomics2025}, based on the model by \citet{benardWealthStatusBasedModel2007}, which is a continuous variant of the famous model by \citet{schellingDynamicModelsSegregation1971}. There are two classes of agents that interact with each other and themselves. Households occupy housing units and want to live in those housing units that maximize their residential satisfaction, i.e. utility, which is a function of housing quality and neighborhood status, given their budget. They are mobile, so they can move in and out of housing units and neighborhoods if there are vacant units. Landlords own the housing units, which are represented by the cells on the city grid. They need to decide whether it is profitable to invest in their housing units, which they do heuristically based on changes in rents in the neighborhood.
+
+\subsection{Modeling Demand}
+
+Households are the demanders of housing. Each household $i$ is characterised by their income disposable on housing $w_i \in [0, 1]$ and their social status $s_i \in [0, 1]$. Both household attributes are fixed over time. Income distributions are almost always positively skewed and long-tailed. I sample the household's income from a $Beta(2, \ 5)$ distribution in the main experiment to capture this typical feature. Income inequality in samples from this distribution, as measured by the Gini index, averages about 31.5, which is comparable to the level of income inequality in Germany, France, and Canada in recent years\footnote{World Bank Poverty and Inequality Platform: \url{https://data.worldbank.org/indicator/SI.POV.GINI/}}. I use different Beta distributions in robustness check C. I assume a similar distributional form for social status $s_i$, which is typically correlated with income. The social status is therefore sampled dependent on income and a correlation parameter $r \in [0, 1]$: 
+
+\begin{equation}
+ s_i \sim r \ w_i \\ + \\ (1 - r) \ Beta(2, \ 5)
+\end{equation}
+\label{eq:soc}
+
+Housing in this model represents a consumption bundle $x$ of two commodities, housing quality $q(x, t)$ and neighborhood status $\bar{s}(x, t)$, which are variable over time $t$. Housing quality is variable because landlords can invest (see section on supply), and neighborhood status is variable over time as households can move into and out of units and neighborhoods. Housing quality represents the desirability of the unit, while neighborhood status represents the desirability of the neighborhood. I operationalize neighborhood status as the average social status of the inhabitants $j$ of the housing units in the Moore neighborhood of the housing unit $x$ that household $i$ considers moving to at time $t$. $n_{x, t}$ is the number of neighbors the household would have at that location, i.e., the number of occupied housing units neighboring $x$ at time $t$. Robustness check D varies the size of these Moore neighborhoods. The social position of a neighbor $j$ at location $x$ at time $t$ is referred to by $s_{j}(x, t)$. 
+
+\begin{equation}
+ \bar{s}(x, t) = \frac{1}{n_{j}(x, t)} \sum_{j = 1}^{n_{j}(x, t)} s_{j}
+\end{equation}
+\label{eq:status}
+
+I propose the following Cobb-Douglas utility function to model the household's housing preferences. The parameter $a \in [0, 1]$ weighs the two commodities and expresses how important social preferences are relative to housing quality. If $a = 0$, only housing quality matters in the utility calculation of the household; at $a = 1$, only average social status matters. $a$ is identical for all households in a given simulation run, therefore, all housing units are equally desirable to all households.
+
+\begin{equation}
+ U(x, t) = \\ \bar{s}(x, t)^a \\ q(x, t)^{1-a}
+\end{equation}
+\label{eq:util}
+
+The set of all housing units $x$ at time $t$ is denoted by $X(t)$, and the set of renters inhabiting housing unit $x$ at time $t$ is denoted $L(x, t)$, which can contain at most one renter: $|L(x, t)| \leq 1 \ \forall \ x, t$. For each household $i$, there is a set of available options, the \textit{budget set} $B_i(t) \subseteq X(t)$. The housing units in this set are the household's current and unoccupied locations if the rent $p(x, t)$ of these locations is less or equal the household's disposable income. If the current location becomes too expensive for the household, it is no longer within the budget set, and the household is forced to move, i.e. the household is displaced. 
+
+\begin{equation}
+B_i(t) = \{x \in X(t): (\ L(x, t) = \{\emptyset\} \ \lor \ L(x, t) = \{i\}) \ \land \ p(x, t) \leq w_i \}
+\end{equation}
+
+Suppose households choose their housing unit according to the discussed preferences. In that case, their choice of housing unit $x$ can be treated \textit{as if} they maximize their utility under the constraint that they need to be able to afford this location:
+
+\begin{equation}
+\operatorname*{arg\,max}_{x \in B_i(t)} U(x, t) \\*
+\end{equation}
+
+If no housing units are available with rent below or equal to the household's disposable income, the household moves to the empty location with the lowest rent. 
+
+
+\subsection{Modeling Supply}
+
+Landlords supply housing quality $q(x, t)$ of housing unit $x$. $q(x, t)$ represents the monetary value of housing quality independent of the neighborhood. Quality is path-dependent; it is dependent on past investments. Landlords invest in their housing quality if the average rent in the Moore neighborhood increases and will not invest when average rent is falling. As landlords would like to know whether investing will be profitable, an increase in average neighborhood rent indicates that their neighborhood attracts wealthy residents who are able to provide a return on investment. However, if the rents in the neighborhood decrease, returns in this neighborhood are too low to justify investments. In this case, housing quality decreases due to physical decay. 
+
+As $q(x, t)$ represents the monetary value of housing quality, landlords change housing quality proportional to the change in average neighborhood rent. This also reflects that landlords are responsive to the size of the change in neighborhood rents. If neighborhood rents only rise slightly, they will not invest large sums of money. And if neighborhood rents fall slightly, they do not directly abandon the house but limit their upkeep. This reduced level of upkeep is insufficient to retain the same housing quality though.
+
+To model the path dependency and inertia of housing quality, landlords can only change housing quality to some extent from t-1 to t. Housing quality retains a certain percentage from its previous value, which is determined by a global parameter $b$ which represents inertia. When $b = 0$, housing quality has no inertia but can change entirely from t-1 to t. If $b = 1$, housing quality cannot change over time but is fixed at model setup.
+
+If $x_j$ is one of the $n_v$ housing units in the Moore neighborhood (the size of the Moore neighborhoods are varied in robustness check D) of housing unit $x_i$ at time $t$, the average rent $\bar{p}(x_i, t)$ in the neighborhood of $x_i$ at time $t$ is given by:
+
+\begin{equation}
+\bar{p}(x_i, t) = \frac{1}{n_v} \sum_{k = 1}^{n_v} p(x_j, t)
+\end{equation}
+
+Given these assumptions, I operationalized the landlords' decision-making process as a weighted average of the previous quality of the housing unit and the average rent in the neighborhood. The housing quality is then given by:
+
+\begin{equation}
+q(x_i, t) = b \ q(x_i, t-1) \\ + \\ (1 - b) \ \bar{p}(x_i, t)
+\end{equation}
+\label{eq:quality}
+
+This formulation assumes that disinvestment and investment are symetrical though, which is unrealistic \citep{glaeserUrbanDeclineDurable2005}. I opted for this version, however, to limit the number of necessary parameters.
+
+\subsection{Rent}
+
+$C(x_i, t)$ denotes all housing units $x_j$ that have a lower utility than $x_i$, which are the competition of $x_i$. Rent is then the 75th percentile of incomes of the households $L(C_i)$ living in the housing units in the competition set.
+
+\begin{equation}
+C(x_i, t) = \{ x \in X: U(x_j, t) \leq U(x_i, t)  \}
+\end{equation}
+
+\begin{equation}
+p(x, t) = P_{75}[\{ L(C_i): w_i  \}]
+\end{equation}
+
+
+\subsection{Simulation Experiments}
+
+\input{/home/malte/Projects/SocEconHousing/images/parameters_table.tex}
+
+% TODO add pseudo code
+
+Housing units and their landlords are immobile, represented by 900 squares representing a city on a 30x30 toroidal lattice. Households can move between these housing units if another household does not occupy them. About 85\% of the housing units are occupied by households. 
+
+Because randomness affects the results of computational models \citep{macySignalImportanceNoise2015} and stochastic models are empirically more accurate \citep{masRandomDeviationsImprove2020}, I add random moves. Each household has a two percent chance of moving out of the city. A corresponding number of newly created households move into the city, so vacancy rates remain identical over time.
+
+I ran 15 simulations with the same parameter combinations for the main results. I use five levels in the parameters $a$ and $r$: 0, 0.25, 0.5, 0.75, and 1. $d$ is varied in four levels: 0.95, 0.9, 0.85, 0.8. Each combination of parameters is repeated 15 times. This results in 1500 simulation runs of 400 time steps each. Each simulation outputs a time series of every housing unit and household, resulting in 1500 runs x 400 time points x 900 housing units = 540 million observations of housing units in the raw data set.
+
+For more details on the models parameters and which other parameters I have varied in robustness checks, see table \ref{tab:parameters} and the supplementary material.
+
+\subsection{Measurement and Analysis}
+
+In the presented analyses, I only analyse data after the burn-in period, when the model already converged to a steady equilibrium. In the main experiment, I analyse the last 100 time steps out of the simulated 400. The analysis sample therefore consists of 135 million observations of housing units and their occupying households.
+
+In data preparation, I generate two additional data sets from the observations of housing units. I cut the grid into 5x5 neighborhoods for analysis before calculating segregation indices for every time point and every simulation run based on these neighborhoods. Although most of my variables are continuous, I categorize them using deciles and calculate the rank-order information theory index $H^R$ \citep{reardonNewApproachMeasuring2006} for income, status, rents and housing quality. Although there are segregation indices for continuous data, I decided to use measures frequently used in empirical research. These aggregate indices and Gini indices for the overall levels of inequality in the endogenous variables rent and housing quality are saved in a data set representing the city level. I also export a neighborhood level data set with averages in all relevant variables and their rank order to assess stability and changes of neighborhoods. I merge the neighborhood averages to the individual level data to analyse who is living in which neighborhoods and calculate some individual level indicators such as the ratio between rent and income.
+
+For more details on the performed analyses and their interpretations, see the supplementary materials and the respective Python and R code.
