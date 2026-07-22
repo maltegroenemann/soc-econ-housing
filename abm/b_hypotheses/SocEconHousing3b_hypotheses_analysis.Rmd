@@ -84,18 +84,58 @@ City Level:
 - More segregated cities have higher inequalities in housing quality, controlling for income inequality.
 - The positive effect of income inequality on housing inequality is larger in more segregated cities.
 
-Neighborhood Level
+Neighborhood Level:
 
+- There is an inverse U-shaped relationship between the rank of a neighborhood and its stability over time.
 - Neighborhoods are more stable over time in more segregated cities.
+- The inverse U-shape is less pronounced in more segregated cities.
 
+Vacancies:
+
+- The more a city is segregated by income and rent, the more unevenly are vacant units distributed over neighborhoods.
+- Vacancy rates are typically higher in poor and low-quality neighborhoods. This relationship is often convex: only poorer neighborhoods have higher vacancy rates while middle to high income neighborhoods have barely any vacancies.
+- The more segregated a city by income, the more concentrated are vacancies in the poorest and most rundown neighborhoods.
+- The more segregated a city by income, the lower is the average housing quality and rent of the vacant units.
 
 Individual Level:
+
+*Residential Mobility:*
 
 - The more segregated a city, the lower the probability that households move voluntarily.
 - The more segregated a city, the higher the probability that households move involuntarily.
 - The probability of moving (voluntarily or involuntarily) decreases with household income.
 - The more segregated a city, the effect of household income on voluntary residential mobility becomes less negative.
 - The more segregated a city, the effect of household income on involuntary residential mobility becomes more negative.
+
+*Rent:*
+
+Attention: rent in my model behaves differently from rent in real cities. In reality, rents behave more like utility (hedonic price models, see below).
+
+- The relationship between household income and rent is concave (positive with diminishing returns).
+- Cities with higher income inequality have lower average rents.
+- The effect of income on rent is less positive in more unequal cities.
+
+*Rent-to-Income Ratio:*
+
+- The share of income paid for housing decreases with household income.
+- The negative effect is non-linear/convex: it is strongest at the bottom, where rent can exceed the disposable income of the poorest households.
+- The relationship between rent-to-income ratio and income is more negative in more segregated cities.
+- The relationship between rent-to-income ratio and income is more negative in more unequal cities.
+
+*Housing Quality:*
+
+- Cities with higher income inequality have lower housing quality on average.
+- The effect of income on housing quality is more positive in more segregated cities.
+- The effect of income on housing quality is less positive in more unequal cities.
+- Higher status is related to higher housing quality even after controlling for income.
+- The more important neighbors' status is to households, the stronger the positive relationship between status and housing quality net of income.
+- The more segregated a city, the stronger the positive relationship between status and housing quality net of income.
+
+*Utility:*
+
+- Cities with higher income inequality have lower utility on average.
+- The effect of income on utility is more positive in more segregated cities.
+- The effect of income on utility is less positive in more unequal cities.
 
 
 
@@ -624,7 +664,7 @@ Because voluntary moves are much more common, patterns of overall mobility refle
 
 ```{r rent_1}
 unit_data_reg <- unit_data %>%
-  select(sample_id, t, hh_income, hh_status, housing_quality, rent, rent_to_income) %>%
+  select(sample_id, t, hh_income, hh_status, housing_quality, rent, rent_to_income, utility) %>%
   full_join(city_data,
             by = c("sample_id", "t")) %>%
   mutate(log_hh_income = log(hh_income),
@@ -703,11 +743,16 @@ rm(m_rent)
 gc()
 ```
 
-Here I regress the rent a household pays onto household and city characteristics. Richer households pay more for housing, but that comes as no surprise. Higher segregation seems result in a very small increase of rents but this effect is negligible. The interaction effect of income and segregation is also very small in magnitude. The rich will likely live in the best and therefore most expensive housing units no matter whether they are segregated or not. The rent distribution is not affected by segregation, as also seen in the heatmap at the very top. It is affected by income inequality though: cities with higher income inequality have a higher inequality in rents (see above) but average rent is cheaper (in reality though, high inequality cities tend to have tight housing markets). This seems to be due (at least in part) because the rents rise less than incomes, so the effect of income on rent is less positive in more unequal cities (negative interaction effect of income and income inequality that reduces the size of the main effect of income inequality).
+Here I regress the rent a household pays onto household and city characteristics. Richer households pay more for housing, but that comes as no surprise. Higher segregation seems to result in a very small increase of rents but this effect is negligible. The interaction effect of income and segregation is also very small in magnitude. The rich will likely live in the best and therefore most expensive housing units no matter whether they are segregated or not. The rent distribution is not affected by segregation, as also seen in the heatmap at the very top. While segregation can increase the variation in housing quality, neighborhood status and, as a consequence, utility (see below), rent closely follows the fixed income distribution. Utility might be distributed more unequal but the rich will live in the best units no matter what the value of the utility is. Rent is a mapping of the income distribution onto housing units by rank of utility, not by its value. 
+
+It is affected by income inequality though: cities with higher income inequality have a higher inequality in rents (see above) but average rent is cheaper (in reality though, high inequality cities tend to have tight housing markets). This seems to be due (at least in part) because the rents rise less than incomes, so the effect of income on rent is less positive in more unequal cities (negative interaction effect of income and income inequality that reduces the size of the main effect of income inequality).
 
 - The relationship between household income and rent is concave (positive with diminishing returns).
 - Cities with higher income inequality have lower average rents.
 - The effect of income on rent is less positive in more unequal cities.
+
+These results for rent in the model are because every household maximizes their utility given income and we have perfect sorting. Rent is a perfect mapping of the income distribution. In real cities, this sorting is not perfect and households might not spend their entire disposable income on housing. There, rent reflects more what households are willing to pay given the characteristics of the unit and they might save the rest of their income. In reality, prices behave less like income but more like utility (although they are of course related). That is the entire idea behind hedonic price regressions.
+
 
 ## Rent to Income Ratio
 
@@ -957,3 +1002,81 @@ This table adds household status as a predictor for housing quality. As discusse
 - The more important neighbors' status is to households, the stronger the positive relationship between status and housing quality net of income.
 - The more segregated a city, the stronger the positive relationship between status and housing quality net of income.
 
+## Utility
+
+The best proxy for desirability of a unit in empirical analyses is its price. However, rent in real cities behaves more like a measure of utility (see above). In utility, both quality of the unit and the neighborhood are combined. We should therefore see the same relationships as above.
+
+```{r util_1}
+modelsummary(list(
+  feols(data = unit_data_reg,
+        utility ~ log_hh_income + inc_seg + inc_gini,
+        cluster = "sample_id"),
+  feols(data = unit_data_reg,
+        utility ~ log_hh_income * inc_seg + inc_gini,
+        cluster = "sample_id"),
+  feols(data = unit_data_reg,
+        utility ~ log_hh_income * inc_gini + inc_seg,
+        cluster = "sample_id"),
+  feols(data = unit_data_reg,
+        utility ~ log_hh_income * inc_seg + log_hh_income * inc_gini,
+        cluster = "sample_id")
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001),
+  gof_map = c("nobs", "r.squared", "bic"))
+```
+
+```{r util_2, out.width="50%"}
+m_utility <- feols(data = unit_data_reg,
+                   utility ~ log_hh_income * inc_seg + log_hh_income * inc_gini,
+                   cluster = "sample_id")
+
+pred_utility_seg <- expand.grid(
+  log_hh_income = seq(log(min(unit_data_reg$hh_income, na.rm = TRUE)),
+                      log(max(unit_data_reg$hh_income, na.rm = TRUE)), length.out = 100),
+  inc_seg   = inc_seg_vals,
+  inc_gini  = mean(unit_data_reg$inc_gini, na.rm = TRUE)
+) %>%
+  mutate(hh_income     = exp(log_hh_income),
+         inc_seg_level = factor(inc_seg_labels[match(inc_seg, inc_seg_vals)], levels = inc_seg_labels))
+pred_utility_seg$predicted <- predict(m_utility, newdata = pred_utility_seg)
+
+pred_utility_gini <- expand.grid(
+  log_hh_income = seq(log(min(unit_data_reg$hh_income, na.rm = TRUE)),
+                      log(max(unit_data_reg$hh_income, na.rm = TRUE)), length.out = 100),
+  inc_gini  = inc_gini_vals,
+  inc_seg   = mean(unit_data_reg$inc_seg, na.rm = TRUE)
+) %>%
+  mutate(hh_income      = exp(log_hh_income),
+         inc_gini_level = factor(inc_gini_labels[match(inc_gini, inc_gini_vals)], levels = inc_gini_labels))
+pred_utility_gini$predicted <- predict(m_utility, newdata = pred_utility_gini)
+
+ggplot(pred_utility_seg, aes(x = hh_income, y = predicted, color = inc_seg_level, group = inc_seg_level)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Predicted Utility by Household Income",
+       subtitle = "Moderated by Income Segregation",
+       x = "Household Income", y = "Predicted Utility",
+       color = "Income Segregation") +
+  theme_bw() + theme(legend.position = "bottom")
+
+ggplot(pred_utility_gini, aes(x = hh_income, y = predicted, color = inc_gini_level, group = inc_gini_level)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Predicted Utility by Household Income",
+       subtitle = "Moderated by Income Inequality",
+       x = "Household Income", y = "Predicted Utility",
+       color = "Income Inequality (Gini)") +
+  theme_bw() + theme(legend.position = "bottom")
+```
+
+```{r util_3, include=FALSE}
+rm(m_utility)
+gc()
+```
+
+Indeed, the results for utility mirror the results for housing quality.
+
+- Cities with higher income inequality have lower utility on average.
+- The effect of income on utility is more positive in more segregated cities.
+- The effect of income on utility is less positive in more unequal cities.

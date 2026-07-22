@@ -469,43 +469,7 @@ ggplot(nb_data) +
   theme(legend.position = "bottom")
 ```
 
-While city size seems unrelated to neighborhood vacancy rates, population density obviously is related to vacancy rates. The overall population density determines which proportion of units stays vacant in the entire city. With higher density, there are fewer vacancies. This shows also on the neighborhood level as low-income neighborhoods with cheap and low quality housing have fewer vacancies in runs with higher densities. As established in the main experiment, when there is segregation, vacancies are almost exclusively found in low quality neighborhoods as everyone wants to maximize their utility with their housing choice and these units and neighborhoods provide little utility.
-
-```{r}
-nb_vacancies_1 <- feglm(data = nb_data,
-                           ave_vacant ~ ave_quality + quality_seg + density,
-                           family = binomial(link = "logit"),
-                           cluster = "sample_id")
-nb_vacancies_2 <- feglm(data = nb_data,
-                           ave_vacant ~ ave_quality * quality_seg + density,
-                           family = binomial(link = "logit"),
-                           cluster = "sample_id")
-nb_vacancies_3 <- feglm(data = nb_data,
-                           ave_vacant ~ ave_quality * quality_seg + density * quality_seg,
-                           family = binomial(link = "logit"),
-                           cluster = "sample_id")
-nb_vacancies_4 <- feglm(data = nb_data,
-                           ave_vacant ~ ave_quality * quality_seg * density,
-                           family = binomial(link = "logit"),
-                           cluster = "sample_id")
-
-quality_seg_vals   <- c(min(nb_data$quality_seg, na.rm = TRUE),
-                    mean(nb_data$quality_seg, na.rm = TRUE),
-                    max(nb_data$quality_seg, na.rm = TRUE))
-quality_seg_labels <- paste0(c("Min", "Mean", "Max"), " (", round(inc_seg_vals, 3), ")")
-
-modelsummary(list(
-  nb_vacancies_1,
-  nb_vacancies_2,
-  nb_vacancies_3,
-  nb_vacancies_4
-),
-  output = "html",
-  stars = c('**' = .01, '***' = .001),
-  gof_omit = ".*")
-```
-
-Does density interact with segregation and average neighborhood housing quality though?
+While city size seems unrelated to neighborhood vacancy rates, population density obviously is related to vacancy rates. The overall population density determines which proportion of units stays vacant in the entire city. With higher density, there are fewer vacancies. This shows also on the neighborhood level as low-income neighborhoods with cheap and low quality housing have fewer vacancies in runs with higher densities. As established in the main experiment, when there is segregation, vacancies are almost exclusively found in low quality neighborhoods as everyone wants to maximize their utility with their housing choice and these units and neighborhoods provide little utility. Because of the different overall density, the average vacancy rate in low-quality neighborhoods changes with density and as a consequence the slope between neighborhood attributes and vacancy rate changes as well. However, further analyses did not suggest that density changes the moderating effect of segregation on the effect of neighborhood characteristics on vacancy rate.
 
 
 ## Properties of empty Units
