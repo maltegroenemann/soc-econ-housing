@@ -34,6 +34,7 @@ Each computational experiment has its own subfolder:
 - `f_vision`: robustness check varying the definition of neighborhood (vision range)
 - `g_sizedensity`: robustness check varying city size and density
 - `h_NetLogo`: reimplementation of the model in NetLogo as an additional robustness check
+- `i_discretechoice`: variant of the model replacing the utility-maximization in residential decision-making with a discrete choice model
 
 Each subfolder contains:
 

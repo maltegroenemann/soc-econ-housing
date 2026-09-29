@@ -1,0 +1,637 @@
+---
+title: "A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality"
+subtitle: "Part IIIi: Analysis of the Discrete Choice Variant"
+author: "Malte Grönemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error = FALSE,
+                      out.width = "50%")
+
+library(nanoparquet)
+library(tidyr)
+library(broom)
+library(Hmisc)
+library(DescTools)
+library(dplyr)
+library(ggplot2)
+library(fixest)
+library(modelsummary)
+library(marginaleffects)
+
+data_directory <- "./data/discretechoice/" # TODO change directory
+
+city_data <- read_parquet(paste(data_directory, "city_data.parquet", sep = ""))
+nb_data <- read_parquet(paste(data_directory, "nb_data.parquet", sep = ""))
+unit_data <- read_parquet(paste(data_directory, "unit_data.parquet", sep = ""))
+
+# create ad merge average Gini values for the three distribution shapes
+gini_df <- unit_data %>%
+  group_by(distribution) %>%
+  summarise(dist_gini = Gini(hh_income, na.rm = TRUE))
+
+unit_data <- unit_data %>%
+  full_join(gini_df, by = "distribution") %>%
+  mutate(dist_gini_f = as.factor(round(dist_gini, digits = 2)))
+
+nb_data <- nb_data %>%
+  full_join(gini_df, by = "distribution") %>%
+  mutate(dist_gini_f = as.factor(round(dist_gini, digits = 2)))
+
+city_data <- city_data %>%
+  full_join(gini_df, by = "distribution") %>%
+  mutate(dist_gini_f = as.factor(round(dist_gini, digits = 2)))
+```
+
+# Experiment Description
+
+## Motivation and Parameters
+
+In the main model, households deterministically choose the housing unit that maximizes their utility within their budget set. This choice rule follows the equilibrium sorting tradition in urban economics and the models by Schelling (1971) and Benard and Willer (2007), on which my model builds. Empirical research on residential mobility, however, typically models location choices probabilistically using discrete choice models (Bayer et al. 2007, Bruch and Mare 2012), and this approach has also been adopted in agent-based models of residential segregation (Bruch and Mare 2006, Yavas 2019). Probabilistic choice acknowledges that location decisions depend on factors not captured by the model, such as idiosyncratic tastes or incomplete information about vacancies. While I model noise with population dynamics, so there are exogenous moves, each move deterministically goes to the best unit. So when the move happens is partially random, but the location never is. To assess whether my results depend on the deterministic choice rule, I generalize it to a conditional logit model that contains the main model as a limiting case.
+ 
+I assume that the utility household $i$ derives from housing unit $x$ at time $t$ is given by a random utility function consisting of a systematic component and a random component:
+$$ V_i(x,t) = g \ln U(x,t) + \varepsilon_{ixt} $$
+
+where $U(x,t)$ is the Cobb-Douglas utility from before, $g \geq 0$ is a precision parameter, and $\varepsilon_{ixt}$ is an independently and identically distributed Gumbel error. 
+ 
+Given the distributional assumption on $\varepsilon_{ixt}$, the probability that household $i$ chooses housing unit $x$ at time $t$ takes the form of a conditional logit. Because the systematic component of the random utility function is $g \ln U(x,t)$ and $\exp g \ln U(x,t) = U(x,t)^{g}$, the probability is given by:
+
+
+$$
+  P_i(x,t) =
+  \begin{cases}
+    \dfrac{U(x,t)^{g}}{\sum_{y \in B_i(t)} U(y,t)^{g}}
+      & \text{if } x \in B_i(t), \\[2ex]
+    0 & \text{otherwise.}
+  \end{cases}
+$$
+Substantively, the probability that household $i$ chooses housing unit $x$ at time $t$ is zero if $x$ is not in its budget set, which consists of its current unit (if affordable) and all affordable vacancies. Otherwise, it increases with the utility of $x$ relative to the utilities of all options in the budget set, and it decreases with the number of these options. How strongly the probability responds to differences in utility is governed by the precision parameter $g$. If $x$ is the household's current unit, this is the probability of staying. Because choices are probabilistic, this relationship holds only on average across many decisions. For any finite $g$, households may stay even when a better affordable unit is available, or move to a unit that provides lower utility than their current one. Such choices become less likely as $g$ increases.
+
+The precision parameter $g$ determines how strongly choices follow differences in utility. For any two units $x$ and $y$ in the budget set, the odds of choosing $x$ over $y$ are
+
+$$ \frac{P_i(x,t)}{P_i(y,t)} = \left( \frac{U(x,t)}{U(y,t)} \right)^{g} $$
+For example, a unit providing 10\% higher utility is chosen with odds of $1.1^{g}$, that is, about twice as often for $g = 7$ and about eleven times as often for $g = 25$. At $g = 0$, households choose randomly among all affordable units. As $g \to \infty$, the probability of choosing the utility-maximizing unit approaches one, and the discrete choice version converges to the deterministic choice rule of the main model. The main model is therefore a special case of this generalization.
+ 
+I simulate this generalized model for a small set of the original parameters ($a \in \{0, 0.25, 1\}$, $r \in \{0, 0.5\}$, $b = 0.95$) and vary $g \in \{0, 3, 10, 30, 100\}$. I also vary the shape of the income distribution ($\{1, 2, 3\}$) to see whether the probabilistic moving rule is able to reproduce the stylized facts of higher segregation with higher inequality and the U-shaped relationship between income quantile and segregation (the poor and the rich being more segregated).
+
+
+## Summary
+
+The discrete choice variant reproduces the behavior of the main model with high values of the precision parameter $g$ as expected. Lower levels of precision make moves primarily random, only low-income households are restricted in residential choice due to affordability. Therefore, little stable segregation forms with low values of precision. For intermediate values of $g$, residential segregation is even higher than in the main model as the added random moves free up spaces that a household would not have left otherwise and therefore provide opportunities for even more segregating moves. The randomness therefore resolves the coordination problem whereby a household with a better fit to the neighborhood exists but can only move there if the current occupant moves to a vacancy elsewhere. The main model therefore produces less perfect segregation than one might expect from a utility-maximization model.
+
+The precision parameter barely interacts with the level of income inequality, and the discrete choice variant is unable to overcome the two main limitations of the model: it fails to reproduce the stronger segregation of the poor and the wealthy, and the increase in segregation with rising income inequality.
+
+
+# Segregation
+
+```{r}
+seg_long <- city_data %>%
+  select(-ends_with("gini")) %>%
+  pivot_longer(cols = ends_with("seg"),
+               cols_vary = "slowest",
+               names_to = "dimension",
+               values_to = "segregation") %>%
+  mutate(dimension = if_else(dimension == "inc_seg", "Income", dimension),
+         dimension = if_else(dimension == "status_seg", "Status", dimension),
+         dimension = if_else(dimension == "quality_seg", "Quality", dimension),
+         dimension = if_else(dimension == "rent_seg", "Rent", dimension),
+         dimension = if_else(dimension == "vacancy_seg", "Vacancy", dimension))
+
+seg_long %>%
+  filter(dimension == "Income") %>%
+  group_by(a_preferences, r_correlation, g_precision, dist_gini_f) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(g_precision),
+      y = segregation,
+      colour = dist_gini_f,
+      shape = dist_gini_f,
+      group = dist_gini_f) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Income Segregation", y = "H^R", x = "g_precision",
+       colour = "Income Gini", shape = "Income Gini") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "Status") %>%
+  group_by(a_preferences, r_correlation, g_precision, dist_gini_f) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(g_precision),
+      y = segregation,
+      colour = dist_gini_f,
+      shape = dist_gini_f,
+      group = dist_gini_f) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Status Segregation", y = "H^R", x = "g_precision",
+       colour = "Income Gini", shape = "Income Gini") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "Quality") %>%
+  group_by(a_preferences, r_correlation, g_precision, dist_gini_f) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(g_precision),
+      y = segregation,
+      colour = dist_gini_f,
+      shape = dist_gini_f,
+      group = dist_gini_f) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Housing Quality Segregation", y = "H^R", x = "g_precision",
+       colour = "Income Gini", shape = "Income Gini") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_long %>%
+  filter(dimension == "Rent") %>%
+  group_by(a_preferences, r_correlation, g_precision, dist_gini_f) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(g_precision),
+      y = segregation,
+      colour = dist_gini_f,
+      shape = dist_gini_f,
+      group = dist_gini_f) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Rent Segregation", y = "H^R", x = "g_precision",
+       colour = "Income Gini", shape = "Income Gini") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As expected, higher values of $g$ lead to more segregation most of the time, but there is also an inverse-U-shaped pattern. For the largest values of $g$, segregation levels decrease slightly, especially in the empirically most plausible case and concerning income segregation. When precision is 0, the utility function does not matter; sorting occurs only through budget constraints. While the poor need to move to cheap housing units that are somewhat clustered, wealthy households move randomly. With a precision parameter of 30 or even 100, the results are very similar to the results from the main analysis. Random moves free up spaces a household would not have left otherwise and allow for further segregating moves. When no household has an incentive to move, the original model may get stuck with imperfect segregation; the random moves resolve the coordination problem and achieve an even more segregated city. This result matches the observation of van de Rijt, Siegel and Macy (2009).
+
+The differences in income inequality do not produce sizeable differences or a stable pattern in income segregation. The discrete choice variant is therefore not able to produce the stylized fact that segregation increases with income inequality, remaining a shortcoming of the model. This extends the finding of Yavaş (2019) and my own that utility-maximization models are unable to reproduce this stylized fact, even with a random utility specification.
+
+## Segregation Profiles
+
+```{r, results='hide'}
+## Defining Segregation Measures
+entropy <- function(p) {
+  e <- ifelse(p == 0 | p == 1, 
+              0, # 0 * log2(1 / 0) := 0; see Reardon et al (2006), p. 11
+              p * log2(1 / p) + (1 - p) * log2(1 / (1 - p)))
+  return(e)
+}
+
+# entropy for the percentile below a threshold of a distribution 
+# notation following Reardon and Bischoff (2011) p. 1110
+E_p <- function(variable, threshold) {
+  p <- mean(variable <= threshold, na.rm = TRUE)
+  return(entropy(p))
+}
+
+
+# Theil segregation index for a continuous variable and a single threshold
+H_p <- function(variable, neighborhoods, threshold){
+  # notation following Reardon and Bischoff (2011) p. 1111
+  # this function assumes that we have a dataset with a continuous variable of individuals in neighborhoods
+  df <- data.frame(variable = variable, neighborhoods = neighborhoods)
+  
+  entropy_total_E <- E_p(variable, threshold)
+  pop_total_T <- sum(is.na(variable) == FALSE)
+  
+  df_nb <- data.frame(nb_j = unique(neighborhoods),
+                      pop_tj = NA,
+                      entropy_Ej = NA)
+  for (j in 1:length(df_nb$nb_j)) {
+    temp <- subset(df, neighborhoods == df_nb$nb_j[j])
+    df_nb$pop_tj[j] = sum(is.na(temp$variable) == FALSE)
+    df_nb$entropy_Ej[j] = E_p(variable = temp$variable, threshold = threshold)
+  }
+  
+  relative_entropies <- (df_nb$pop_tj * df_nb$entropy_Ej) / (pop_total_T * entropy_total_E)
+  H_p <- 1 - sum(relative_entropies, na.rm = TRUE)
+  
+  return(H_p)
+}
+
+
+seg_quantile <- unit_data %>%
+  filter(t == 190) %>%
+  group_by(sample_id, a_preferences, r_correlation, g_precision, distribution, 
+           hh_income, hh_status, rent, housing_quality, nb) %>%
+  reframe(decile = seq(.1, .9, by = .1))  %>%
+  ungroup() %>%
+  group_by(sample_id, a_preferences, r_correlation, g_precision, distribution, decile) %>%
+  summarise(income_Hp = H_p(hh_income, nb, quantile(hh_income, decile, na.rm = TRUE)))
+gc()
+```
+
+
+```{r}
+seg_quantile %>%
+  filter(distribution == 3) %>%
+  ggplot() +
+  aes(x = decile,
+      y = income_Hp,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "g_precision", 
+       title = "Income Segregation by Quantiles - Low Inequality") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_quantile %>%
+  filter(distribution == 2) %>%
+  ggplot() +
+  aes(x = decile,
+      y = income_Hp,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "g_precision", 
+       title = "Income Segregation by Quantiles - Moderate Inequality") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+seg_quantile %>%
+  filter(distribution == 1) %>%
+  ggplot() +
+  aes(x = decile,
+      y = income_Hp,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(y = "H(p)", x = "p", colour = "g_precision", 
+       title = "Income Segregation by Quantiles - High Inequality") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As with the stylized fact that inequality increases segregation, the discrete choice variant also fails to reproduce the stylized fact that the poor and the wealthy are most segregated. As in the main model, the profile is not U-shaped but rather shows a slight inverse-U, or one where the poor are most segregated and the rich are least so (see RC E).
+
+
+# Neighborhood Stability
+
+The following plots show the standard deviation of neighborhood rank over time (after the burn-in) against its mean rank. As income inequality has had little effect so far, I show results only for the moderate inequality case.
+
+```{r, out.width="50%"}
+stability_data <- nb_data %>%
+  filter(distribution == 2) %>%
+  group_by(sample_id, a_preferences, r_correlation, g_precision, nb) %>%
+  summarise(ave_rank_inc = mean(rank_inc),
+            sd_rank_inc = sd(rank_inc),
+            ave_rank_status = mean(rank_status),
+            sd_rank_status = sd(rank_status),
+            ave_rank_quality = mean(rank_quality),
+            sd_rank_quality = sd(rank_quality),
+            ave_rank_rent = mean(rank_rent),
+            sd_rank_rent = sd(rank_rent))
+
+ggplot(stability_data) +
+  aes(x = ave_rank_inc,
+      y = sd_rank_inc,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Income Rank",
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_status,
+      y = sd_rank_status,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Status Rank",
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_rent,
+      y = sd_rank_rent,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Rent Rank",
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(stability_data) +
+  aes(x = ave_rank_quality,
+      y = sd_rank_quality,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Mean(Rank)",
+       y = "SD(Rank)",
+       title = "Neighborhood Stability by Quality Rank",
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+When there is substantial residential segregation (except in the chase-game condition with r = 0 and a = 1, or with low values of $g$), variance in neighborhood rank is relatively low, indicating stability of neighborhoods. The neighborhoods at the top and bottom of the ranking have lower variance in rank than the middle, as expected. In some cases, neighborhood stability is so prevalent that, independent of their place in the ranking, neighborhoods barely change rank, leaving very little variation between them. The finding from the main model that neighborhoods are stable over time when segregation emerges holds in the discrete choice variant as well.
+
+
+# Vacancies
+
+## Vacancy Segregation
+
+```{r, out.width="75%"}
+seg_long %>%
+  filter(dimension == "Vacancy") %>%
+  group_by(a_preferences, r_correlation, g_precision, dist_gini_f) %>%
+  summarise(segregation = mean(segregation)) %>%
+  ggplot() +
+  aes(x = as.factor(g_precision),
+      y = segregation,
+      colour = as.factor(dist_gini_f),
+      shape = as.factor(dist_gini_f),
+      group = as.factor(dist_gini_f)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(title = "Vacancy Segregation", y = "Theil Index H", x = "g_precision",
+       colour = "Income Gini", shape = "Income Gini") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+The results for vacancy segregation for the largest values of the precision parameter $g$ are comparable to the results from the main analysis and income inequality barely makes a difference in the spatial distribution of vacant housing. However, for intermediate values of $g$, the spatial concentration of vacant housing is lowest. There, household moves have little connection to utility and these random moves create a lot of vacancies in all neighborhoods.
+
+
+## Properties of Neighborhoods
+
+The properties of units with higher vacancy rates are only shown for moderate levels of income inequality as inequality and precision do not interact.
+
+```{r, out.width="50%"}
+nb_data %>%
+  filter(distribution == 2) %>%
+  ggplot() +
+  aes(x = ave_inc,
+      y = ave_vacant,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Income", y = "Neighborhood Vacancy Rate", 
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+nb_data %>%
+  filter(distribution == 2) %>%
+  ggplot() +
+  aes(x = ave_status,
+      y = ave_vacant,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Status", y = "Neighborhood Vacancy Rate", 
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+nb_data %>%
+  filter(distribution == 2) %>%
+  ggplot() +
+  aes(x = ave_rent,
+      y = ave_vacant,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Rent", y = "Neighborhood Vacancy Rate", 
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+nb_data %>%
+  filter(distribution == 2) %>%
+  ggplot() +
+  aes(x = ave_quality,
+      y = ave_vacant,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Average NB Housing Quality", y = "Neighborhood Vacancy Rate", 
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+When moves are not related to utility and only restricted by budget (small $g$), rich and high-quality neighborhoods have higher vacancy rates as fewer households can afford to move there. When $g$ is sufficiently large, the pattern from the main analysis reappears: vacancies cluster in low-utility neighborhoods.
+
+
+# Residential Mobility
+
+Moves are now stochastic; therefore, utility-decreasing moves are possible. To examine the general level of residential mobility and its type, I classify moves by their reason (forced, because rent exceeds the household's budget; voluntary, to improve utility; or exogenous) and their effect on the household (whether the move resulted in a higher- or lower-utility housing unit). I show plots for the runs with moderate income inequality.
+
+```{r, out.width="75%"}
+mobility_data <- unit_data %>%
+  filter(!is.na(hh_id)) %>%
+  arrange(sample_id, hh_id, t) %>%
+  mutate(pos = paste(x, y, sep = "_"),
+         moved = if_else(pos == Lag(pos), "stayed", NA),
+         moved = if_else(pos != Lag(pos) & Lag(rent > hh_income) & utility >= Lag(utility), 
+                         "forced / increase", moved),
+         moved = if_else(pos != Lag(pos) & Lag(rent > hh_income) & utility < Lag(utility), 
+                         "forced / decrease", moved),
+         moved = if_else(pos != Lag(pos) & Lag(rent <= hh_income) & utility >= Lag(utility), 
+                         "voluntary / increase", moved),
+         moved = if_else(pos != Lag(pos) & Lag(rent <= hh_income) & utility < Lag(utility), 
+                         "voluntary / decrease", moved)) %>%
+  filter(complete.cases(.))
+
+mobility_data %>%
+  filter(distribution == 2) %>%
+  ggplot() +
+  aes(x = as.factor(g_precision),
+      fill = moved) + 
+  geom_bar(position = "stack") +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "g_precision", y = "Residency Status from t to t+1", fill = "") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Forced moves are relatively rare (except in the chase-game condition a = 1 and r = 0) and unsurprisingly result in a decrease in utility for the household in most cases. As rent is based on utility, a household not able to afford a housing unit of a given utility will not be able to move to a different unit with higher utility because budget is still a hard constraint in this version of the model. When moves are voluntary though, moves increase or decrease a household's utility at a similar frequency. However, the absolute difference in utility cannot be determined from this plot. The decreases in utility may be small in magnitude.
+
+Surprisingly, voluntary residential mobility increases with the precision parameter before falling again. At $g = 10$, voluntary mobility is the most likely outcome from t to t+1.
+
+
+## Who is moving?
+
+I show moving probabilities only for the empirically most plausible case (a = 0.25, r = 0.5) and moderate inequality.
+
+```{r}
+prob_mobility <- mobility_data %>%
+  filter(a_preferences == 0.25 & r_correlation == 0.5 & distribution == 2) %>%
+  group_by(sample_id, hh_id, g_precision, dist_gini_f) %>%
+  summarise(prob_vol_move = mean(moved %in% c("voluntary / increase", "voluntary / decrease")),
+            prob_invol_move = mean(moved %in% c("forced / increase", "forced / decrease")),
+            prob_incr_util = mean(moved %in% c("voluntary / increase", "forced / increase")),
+            prob_decr_util = mean(moved %in% c("voluntary / decrease", "forced / decrease")),
+            hh_income = mean(hh_income),
+            hh_status = mean(hh_status))
+
+ggplot(prob_mobility) +
+  aes(x = hh_income,
+      y = prob_vol_move,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(cols = vars(dist_gini_f), 
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Voluntary Move", colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(prob_mobility) +
+  aes(x = hh_income,
+      y = prob_invol_move,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(cols = vars(dist_gini_f), 
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Involuntary Move", colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(prob_mobility) +
+  aes(x = hh_income,
+      y = prob_incr_util,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(cols = vars(dist_gini_f), 
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of Utility-increasing Move", colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(prob_mobility) +
+  aes(x = hh_income,
+      y = prob_decr_util,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(cols = vars(dist_gini_f), 
+             labeller = label_both) +
+  labs(x = "Income", y = "Probability of  Utility-decreasing Move", colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+Involuntary moves are always more common among low-income households, although they are much more concentrated at the bottom with higher values of precision. As in the main model, most voluntary moves are performed by lower-middle income households with higher values of precision as it is much more likely that a randomly created vacancy is affordable and improves their utility whereas the rich are already in the best spots and the poor cannot afford to move to better homes. With low values of precision, this flips though: poor households rarely move voluntarily as they are restricted by their budget but richer households have fewer constraints and move relatively randomly.
+
+The randomness of these moves of higher-middle income households at low precision is also the reason why this group is both most likely to make utility-increasing and utility-decreasing moves. As discussed above, in the higher precision cases, mostly lower-middle income households can move to improve their utility although they are still somewhat vulnerable due to a limited budget and, with the remaining randomness of moves, they are most likely to both increase and decrease their utility. Utility-decreasing moves are, however, most concentrated in poor households.
+
+
+# Individual-level Inequality
+
+
+```{r}
+unit_data %>%
+  filter(!is.na(hh_id) & distribution == 2) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = rent,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Income",
+       y = "Rent",
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+unit_data %>%
+  filter(!is.na(hh_id) & distribution == 2) %>%
+  ggplot() +
+  aes(x = hh_income,
+      y = housing_quality,
+      colour = as.factor(g_precision)) +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(r_correlation),
+             cols = vars(a_preferences), 
+             labeller = label_both) +
+  labs(x = "Housing Quality",
+       y = "Rent",
+       colour = "g_precision") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+For patterns of individual-level stratification, a clear and consistent pattern emerges: as $g$ rises, there is a steeper gradient in rents and housing quality by income (except in the chase game). It requires sufficient residential sorting to create greater inequality in housing quality due to the sideways-looking investment rule. Only then can a gradient in neighborhood and housing quality emerge, which is reflected in rents.
+
+
+# References
+
+Bayer, Patrick, Fernando Ferreira, and Robert McMillan. 2007. “A Unified Framework for Measuring Preferences for Schools and Neighborhoods.” Journal of Political Economy 115(4):588–638.
+
+Benard, Stephen, and Robb Willer. 2007. “A Wealth and Status-Based Model of Residential Segregation.” The Journal of Mathematical Sociology 31(2):149–74. doi:10.1080/00222500601188486.
+
+Bruch, Elizabeth E., and Robert D. Mare. 2006. “Neighborhood Choice and Neighborhood Change.” American Journal of Sociology 112(3):667–709. doi:10.1086/507856.
+
+Bruch, Elizabeth E., and Robert D. Mare. 2012. “Methodological Issues in the Analysis of Residential Preferences, Residential Mobility, and Neighborhood Change.” Sociological Methodology 42(1):103–54. doi:10.1177/0081175012444105.
+
+Schelling, Thomas C. 1971. “Dynamic Models of Segregation.” Journal of Mathematical Sociology 1:143–86.
+
+van de Rijt, Arnout, David Siegel, and Michael Macy. 2009. “Neighborhood Chance and Neighborhood Change: A Comment on Bruch and Mare.” American Journal of Sociology 114(4):1166–80. doi:10.1086/588795.
+
+Yavaş, Mustafa. 2019. “Dissecting Income Segregation: Impacts of Concentrated Affluence on Segregation of Poverty.” The Journal of Mathematical Sociology 43(1):1–22. doi:10.1080/0022250X.2018.1476858.
+
