@@ -38,7 +38,7 @@ library(DescTools)
 #data_directory <- "./data/ineq/"
 # vision has a separate dataprep file!
 #data_directory <- "./data/size/"
-data_directory <- "./abm/c_gentri/test/"
+data_directory <- "./data/discretechoice/"
 # ------------------------------------------------------------------------------
 
 # t from 1 to t_min is disgarded as burn-in, 100 for robustness checks, 400 for main experiment

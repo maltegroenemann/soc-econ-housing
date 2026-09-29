@@ -11,7 +11,7 @@
 
 <meta name="author" content="Malte Grönemann" />
 
-<meta name="date" content="2026-04-17" />
+<meta name="date" content="2026-08-05" />
 
 <title>A socio-economic Model of Residential Segregation, Neighborhood Change and Housing Inequality</title>
 
@@ -1484,7 +1484,7 @@ Segregation, Neighborhood Change and Housing Inequality</h1>
 <h3 class="subtitle">Part IIIc: Analysis of the Gentrification
 Experiment</h3>
 <h4 class="author">Malte Grönemann</h4>
-<h4 class="date">2026-04-17</h4>
+<h4 class="date">2026-08-05</h4>
 
 </div>
 
@@ -1815,6 +1815,240 @@ neighborhoods are equally responsive to demand shocks, the intervention
 results in a uniform effect across all neighborhoods while it remains
 the neighborhood hierarchy intact.</p>
 </div>
+<div id="mechanisms-changes-in-income-and-housing-quality" class="section level2">
+<h2>Mechanisms: Changes in Income and Housing Quality</h2>
+<p>The fact that neighborhoods do change, if not necessarily in rank but
+in average income after a shock to the income distribution, makes it
+possible to trace the investment rule of landlords. This can be a
+blueprint for empirical analyses and would not be possible in the
+hypothesis experiment because there are no changes over time there. This
+section therefore shows how quality changes after a change in incomes in
+the neighborhood because landlords are sideways-looking.</p>
+<!-- preamble start -->
+
+    <script>
+
+      function styleCell_hs6aeufft2212n9qpnv2(i, j, css_id) {
+          var table = document.getElementById("tinytable_hs6aeufft2212n9qpnv2");
+          var cell = table.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+          if (cell) {
+              console.log(`Styling cell at (${i}, ${j}) with class ${css_id}`);
+              cell.classList.add(css_id);
+          } else {
+              console.warn(`Cell at (${i}, ${j}) not found.`);
+          }
+      }
+      function spanCell_hs6aeufft2212n9qpnv2(i, j, rowspan, colspan) {
+        var table = document.getElementById("tinytable_hs6aeufft2212n9qpnv2");
+        const targetCell = table.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+        if (!targetCell) {
+          console.warn(`Cell at (${i}, ${j}) not found.`);
+        }
+
+        // Get all cells that need to be removed
+        const cellsToRemove = [];
+        for (let r = 0; r < rowspan; r++) {
+          for (let c = 0; c < colspan; c++) {
+            if (r === 0 && c === 0) continue; // Skip the target cell
+            const cell = table.querySelector(`[data-row="${i + r}"][data-col="${j + c}"]`);
+            if (cell) {
+              cellsToRemove.push(cell);
+            }
+          }
+        }
+
+        // Remove all cells
+        cellsToRemove.forEach(cell => cell.remove());
+
+        // Set rowspan and colspan of the target cell if it exists
+        if (targetCell) {
+          targetCell.rowSpan = rowspan;
+          targetCell.colSpan = colspan;
+        }
+      }
+      // tinytable span after
+      window.addEventListener('load', function () {
+          var cellsToStyle = [
+            // tinytable style arrays after
+          { positions: [ { i: '23', j: 1 }, { i: '23', j: 2 },  ], css_id: 'tinytable_css_mee76z1fwjm0dkywtqeo',}, 
+          { positions: [ { i: '20', j: 2 }, { i: '20', j: 1 },  ], css_id: 'tinytable_css_zwhnjcjukq6cj38mubrn',}, 
+          { positions: [ { i: '1', j: 1 }, { i: '2', j: 1 }, { i: '4', j: 1 }, { i: '5', j: 1 }, { i: '6', j: 1 }, { i: '3', j: 1 }, { i: '8', j: 1 }, { i: '9', j: 1 }, { i: '10', j: 1 }, { i: '7', j: 1 }, { i: '12', j: 1 }, { i: '13', j: 1 }, { i: '14', j: 1 }, { i: '15', j: 1 }, { i: '16', j: 1 }, { i: '17', j: 1 }, { i: '18', j: 1 }, { i: '19', j: 1 }, { i: '9', j: 2 }, { i: '21', j: 1 }, { i: '22', j: 1 }, { i: '12', j: 2 }, { i: '11', j: 1 }, { i: '1', j: 2 }, { i: '2', j: 2 }, { i: '3', j: 2 }, { i: '4', j: 2 }, { i: '5', j: 2 }, { i: '6', j: 2 }, { i: '7', j: 2 }, { i: '8', j: 2 }, { i: '22', j: 2 }, { i: '10', j: 2 }, { i: '11', j: 2 }, { i: '16', j: 2 }, { i: '13', j: 2 }, { i: '14', j: 2 }, { i: '15', j: 2 }, { i: '17', j: 2 }, { i: '18', j: 2 }, { i: '19', j: 2 }, { i: '21', j: 2 },  ], css_id: 'tinytable_css_87kmwcm2y1hm1r352d1z',}, 
+          { positions: [ { i: '0', j: 1 }, { i: '0', j: 2 },  ], css_id: 'tinytable_css_9mequrhufk3h54don7uh',}, 
+          { positions: [ { i: '23', j: 0 },  ], css_id: 'tinytable_css_n188aden7myn95plyp6x',}, 
+          { positions: [ { i: '20', j: 0 },  ], css_id: 'tinytable_css_qk8z0xldabv6209azua2',}, 
+          { positions: [ { i: '1', j: 0 }, { i: '2', j: 0 }, { i: '3', j: 0 }, { i: '4', j: 0 }, { i: '5', j: 0 }, { i: '6', j: 0 }, { i: '7', j: 0 }, { i: '8', j: 0 }, { i: '9', j: 0 }, { i: '10', j: 0 }, { i: '11', j: 0 }, { i: '12', j: 0 }, { i: '13', j: 0 }, { i: '14', j: 0 }, { i: '15', j: 0 }, { i: '16', j: 0 }, { i: '17', j: 0 }, { i: '18', j: 0 }, { i: '19', j: 0 }, { i: '21', j: 0 }, { i: '22', j: 0 },  ], css_id: 'tinytable_css_vtnwxyyxajo3qub66aai',}, 
+          { positions: [ { i: '0', j: 0 },  ], css_id: 'tinytable_css_3e6wjc4zcg58stqpekg2',}, 
+          ];
+
+          // Loop over the arrays to style the cells
+          cellsToStyle.forEach(function (group) {
+              group.positions.forEach(function (cell) {
+                  styleCell_hs6aeufft2212n9qpnv2(cell.i, cell.j, group.css_id);
+              });
+          });
+      });
+    </script>
+
+    <style>
+
+.table td.tinytable_css_mee76z1fwjm0dkywtqeo, .table th.tinytable_css_mee76z1fwjm0dkywtqeo { text-align: center; border-bottom: solid #d3d8dc 0.1em; }
+.table td.tinytable_css_zwhnjcjukq6cj38mubrn, .table th.tinytable_css_zwhnjcjukq6cj38mubrn { text-align: center; border-bottom: solid black 0.05em; }
+.table td.tinytable_css_87kmwcm2y1hm1r352d1z, .table th.tinytable_css_87kmwcm2y1hm1r352d1z { text-align: center; }
+.table td.tinytable_css_9mequrhufk3h54don7uh, .table th.tinytable_css_9mequrhufk3h54don7uh { text-align: center; border-top: solid #d3d8dc 0.1em; border-bottom: solid #d3d8dc 0.05em; }
+.table td.tinytable_css_n188aden7myn95plyp6x, .table th.tinytable_css_n188aden7myn95plyp6x { text-align: left; border-bottom: solid #d3d8dc 0.1em; }
+.table td.tinytable_css_qk8z0xldabv6209azua2, .table th.tinytable_css_qk8z0xldabv6209azua2 { text-align: left; border-bottom: solid black 0.05em; }
+.table td.tinytable_css_vtnwxyyxajo3qub66aai, .table th.tinytable_css_vtnwxyyxajo3qub66aai { text-align: left; }
+.table td.tinytable_css_3e6wjc4zcg58stqpekg2, .table th.tinytable_css_3e6wjc4zcg58stqpekg2 { text-align: left; border-top: solid #d3d8dc 0.1em; border-bottom: solid #d3d8dc 0.05em; }
+</style>
+    <div class="container">
+      <table class="table table-borderless" id="tinytable_hs6aeufft2212n9qpnv2" style="width: auto; margin-left: auto; margin-right: auto;" data-quarto-disable-processing="true">
+        <thead>
+        
+              <tr>
+                <th scope="col" data-row="0" data-col="0"> </th>
+                <th scope="col" data-row="0" data-col="1">ΔRent (lags)</th>
+                <th scope="col" data-row="0" data-col="2">ΔInc (lags)</th>
+              </tr>
+        </thead>
+        <tfoot><tr><td colspan="3">** p &lt; 0.01, *** p &lt; 0.001</td></tr></tfoot>
+        <tbody>
+                <tr>
+                  <td data-row="1" data-col="0">d_rent_l1</td>
+                  <td data-row="1" data-col="1">0.038***</td>
+                  <td data-row="1" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="2" data-col="0"></td>
+                  <td data-row="2" data-col="1">(0.000)</td>
+                  <td data-row="2" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="3" data-col="0">d_rent_l2</td>
+                  <td data-row="3" data-col="1">0.033***</td>
+                  <td data-row="3" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="4" data-col="0"></td>
+                  <td data-row="4" data-col="1">(0.000)</td>
+                  <td data-row="4" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="5" data-col="0">d_rent_l3</td>
+                  <td data-row="5" data-col="1">0.028***</td>
+                  <td data-row="5" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="6" data-col="0"></td>
+                  <td data-row="6" data-col="1">(0.000)</td>
+                  <td data-row="6" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="7" data-col="0">d_rent_l4</td>
+                  <td data-row="7" data-col="1">0.023***</td>
+                  <td data-row="7" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="8" data-col="0"></td>
+                  <td data-row="8" data-col="1">(0.000)</td>
+                  <td data-row="8" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="9" data-col="0">d_rent_l5</td>
+                  <td data-row="9" data-col="1">0.016***</td>
+                  <td data-row="9" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="10" data-col="0"></td>
+                  <td data-row="10" data-col="1">(0.000)</td>
+                  <td data-row="10" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="11" data-col="0">d_inc_l1</td>
+                  <td data-row="11" data-col="1"></td>
+                  <td data-row="11" data-col="2">0.005***</td>
+                </tr>
+                <tr>
+                  <td data-row="12" data-col="0"></td>
+                  <td data-row="12" data-col="1"></td>
+                  <td data-row="12" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="13" data-col="0">d_inc_l2</td>
+                  <td data-row="13" data-col="1"></td>
+                  <td data-row="13" data-col="2">0.007***</td>
+                </tr>
+                <tr>
+                  <td data-row="14" data-col="0"></td>
+                  <td data-row="14" data-col="1"></td>
+                  <td data-row="14" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="15" data-col="0">d_inc_l3</td>
+                  <td data-row="15" data-col="1"></td>
+                  <td data-row="15" data-col="2">0.007***</td>
+                </tr>
+                <tr>
+                  <td data-row="16" data-col="0"></td>
+                  <td data-row="16" data-col="1"></td>
+                  <td data-row="16" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="17" data-col="0">d_inc_l4</td>
+                  <td data-row="17" data-col="1"></td>
+                  <td data-row="17" data-col="2">0.005***</td>
+                </tr>
+                <tr>
+                  <td data-row="18" data-col="0"></td>
+                  <td data-row="18" data-col="1"></td>
+                  <td data-row="18" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="19" data-col="0">d_inc_l5</td>
+                  <td data-row="19" data-col="1"></td>
+                  <td data-row="19" data-col="2">0.004***</td>
+                </tr>
+                <tr>
+                  <td data-row="20" data-col="0"></td>
+                  <td data-row="20" data-col="1"></td>
+                  <td data-row="20" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="21" data-col="0">Num.Obs.</td>
+                  <td data-row="21" data-col="1">323979</td>
+                  <td data-row="21" data-col="2">323943</td>
+                </tr>
+                <tr>
+                  <td data-row="22" data-col="0">R2</td>
+                  <td data-row="22" data-col="1">0.621</td>
+                  <td data-row="22" data-col="2">0.145</td>
+                </tr>
+                <tr>
+                  <td data-row="23" data-col="0">BIC</td>
+                  <td data-row="23" data-col="1">−4147103.7</td>
+                  <td data-row="23" data-col="2">−3886164.7</td>
+                </tr>
+        </tbody>
+      </table>
+    </div>
+<!-- hack to avoid NA insertion in last line -->
+<p>The regression table shows results from two first-differences models
+where a change in housing quality is regressed on a change in rent or a
+change in income. As we would expect due to the investment rule in the
+model, where landlords invest based on changes in local rents, an
+increase in average rent in the neighborhood is followed by an increase
+in average neighborhood housing quality. However, this effect is not
+immediate but sustained: a change in rents has a sizeable and
+significant effect on a change in housing quality for several time
+periods due to the slow adaption of inert housing quality and local
+spatial feedback loops (see individual level below). The pattern is
+similar but less pronounced for the lags in income because changes in
+local incomes is not directly tied to investment but it is both a cause
+and a consequence of investment: a rise in attractivity of a
+neighborhood leads rich households to move there and the investment
+cycle continues as long as there is a new equilibrium. Because the
+effect of a change in income is less immediate than a change in rent,
+the effect rises with lagged time at first before declining again.</p>
+</div>
 </div>
 <div id="vacancies" class="section level1">
 <h1>Vacancies</h1>
@@ -1843,6 +2077,232 @@ density means lower vacancy rates, and vice versa.</p>
 </div>
 <div id="individual-level" class="section level1">
 <h1>Individual Level</h1>
+<div id="mechanisms-spatial-interdependence-of-housing-units" class="section level2">
+<h2>Mechanisms: Spatial Interdependence of Housing Units</h2>
+<p>Similar to the analysis above showing the investment mechanism at the
+neighborhood level, this analysis at the housing unit level can not only
+show the lagged effect of changes in rents and incomes in a neighborhood
+onto its changes in housing quality, but specifically that changes in
+rent and income in neighboring units have an effect on the focal unit.
+There is a dependence both in space and in time. The spatial mechanism
+operates on the 3x3 Moore neighborhood of each unit and was averaged out
+in the aggregated neighborhoods. The table shows the results of
+regressing the change in a unit’s housing quality on lagged changes in
+the average rent of its 8 Moore neighbors.</p>
+<!-- preamble start -->
+
+    <script>
+
+      function styleCell_rfmhi8raev8kgofgfrgy(i, j, css_id) {
+          var table = document.getElementById("tinytable_rfmhi8raev8kgofgfrgy");
+          var cell = table.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+          if (cell) {
+              console.log(`Styling cell at (${i}, ${j}) with class ${css_id}`);
+              cell.classList.add(css_id);
+          } else {
+              console.warn(`Cell at (${i}, ${j}) not found.`);
+          }
+      }
+      function spanCell_rfmhi8raev8kgofgfrgy(i, j, rowspan, colspan) {
+        var table = document.getElementById("tinytable_rfmhi8raev8kgofgfrgy");
+        const targetCell = table.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+        if (!targetCell) {
+          console.warn(`Cell at (${i}, ${j}) not found.`);
+        }
+
+        // Get all cells that need to be removed
+        const cellsToRemove = [];
+        for (let r = 0; r < rowspan; r++) {
+          for (let c = 0; c < colspan; c++) {
+            if (r === 0 && c === 0) continue; // Skip the target cell
+            const cell = table.querySelector(`[data-row="${i + r}"][data-col="${j + c}"]`);
+            if (cell) {
+              cellsToRemove.push(cell);
+            }
+          }
+        }
+
+        // Remove all cells
+        cellsToRemove.forEach(cell => cell.remove());
+
+        // Set rowspan and colspan of the target cell if it exists
+        if (targetCell) {
+          targetCell.rowSpan = rowspan;
+          targetCell.colSpan = colspan;
+        }
+      }
+      // tinytable span after
+      window.addEventListener('load', function () {
+          var cellsToStyle = [
+            // tinytable style arrays after
+          { positions: [ { i: '23', j: 1 }, { i: '23', j: 2 },  ], css_id: 'tinytable_css_2zjr2mxqkv014cpxk9ox',}, 
+          { positions: [ { i: '20', j: 2 }, { i: '20', j: 1 },  ], css_id: 'tinytable_css_g8vctwplqp7rf2mxddcg',}, 
+          { positions: [ { i: '1', j: 1 }, { i: '2', j: 1 }, { i: '4', j: 1 }, { i: '5', j: 1 }, { i: '6', j: 1 }, { i: '3', j: 1 }, { i: '8', j: 1 }, { i: '9', j: 1 }, { i: '10', j: 1 }, { i: '7', j: 1 }, { i: '12', j: 1 }, { i: '13', j: 1 }, { i: '14', j: 1 }, { i: '15', j: 1 }, { i: '16', j: 1 }, { i: '17', j: 1 }, { i: '18', j: 1 }, { i: '19', j: 1 }, { i: '9', j: 2 }, { i: '21', j: 1 }, { i: '22', j: 1 }, { i: '12', j: 2 }, { i: '11', j: 1 }, { i: '1', j: 2 }, { i: '2', j: 2 }, { i: '3', j: 2 }, { i: '4', j: 2 }, { i: '5', j: 2 }, { i: '6', j: 2 }, { i: '7', j: 2 }, { i: '8', j: 2 }, { i: '22', j: 2 }, { i: '10', j: 2 }, { i: '11', j: 2 }, { i: '16', j: 2 }, { i: '13', j: 2 }, { i: '14', j: 2 }, { i: '15', j: 2 }, { i: '17', j: 2 }, { i: '18', j: 2 }, { i: '19', j: 2 }, { i: '21', j: 2 },  ], css_id: 'tinytable_css_fvqfzniux4r8zcd76g6m',}, 
+          { positions: [ { i: '0', j: 1 }, { i: '0', j: 2 },  ], css_id: 'tinytable_css_15e0zllcdb3z1fcnb5bs',}, 
+          { positions: [ { i: '23', j: 0 },  ], css_id: 'tinytable_css_9p4ywhyfb2d1ojuiite8',}, 
+          { positions: [ { i: '20', j: 0 },  ], css_id: 'tinytable_css_b8i4a87w8h5jyech9boc',}, 
+          { positions: [ { i: '1', j: 0 }, { i: '2', j: 0 }, { i: '3', j: 0 }, { i: '4', j: 0 }, { i: '5', j: 0 }, { i: '6', j: 0 }, { i: '7', j: 0 }, { i: '8', j: 0 }, { i: '9', j: 0 }, { i: '10', j: 0 }, { i: '11', j: 0 }, { i: '12', j: 0 }, { i: '13', j: 0 }, { i: '14', j: 0 }, { i: '15', j: 0 }, { i: '16', j: 0 }, { i: '17', j: 0 }, { i: '18', j: 0 }, { i: '19', j: 0 }, { i: '21', j: 0 }, { i: '22', j: 0 },  ], css_id: 'tinytable_css_7s1zuibczpgv03udtibz',}, 
+          { positions: [ { i: '0', j: 0 },  ], css_id: 'tinytable_css_1natxbh8iv4srb7nhdvb',}, 
+          ];
+
+          // Loop over the arrays to style the cells
+          cellsToStyle.forEach(function (group) {
+              group.positions.forEach(function (cell) {
+                  styleCell_rfmhi8raev8kgofgfrgy(cell.i, cell.j, group.css_id);
+              });
+          });
+      });
+    </script>
+
+    <style>
+
+.table td.tinytable_css_2zjr2mxqkv014cpxk9ox, .table th.tinytable_css_2zjr2mxqkv014cpxk9ox { text-align: center; border-bottom: solid #d3d8dc 0.1em; }
+.table td.tinytable_css_g8vctwplqp7rf2mxddcg, .table th.tinytable_css_g8vctwplqp7rf2mxddcg { text-align: center; border-bottom: solid black 0.05em; }
+.table td.tinytable_css_fvqfzniux4r8zcd76g6m, .table th.tinytable_css_fvqfzniux4r8zcd76g6m { text-align: center; }
+.table td.tinytable_css_15e0zllcdb3z1fcnb5bs, .table th.tinytable_css_15e0zllcdb3z1fcnb5bs { text-align: center; border-top: solid #d3d8dc 0.1em; border-bottom: solid #d3d8dc 0.05em; }
+.table td.tinytable_css_9p4ywhyfb2d1ojuiite8, .table th.tinytable_css_9p4ywhyfb2d1ojuiite8 { text-align: left; border-bottom: solid #d3d8dc 0.1em; }
+.table td.tinytable_css_b8i4a87w8h5jyech9boc, .table th.tinytable_css_b8i4a87w8h5jyech9boc { text-align: left; border-bottom: solid black 0.05em; }
+.table td.tinytable_css_7s1zuibczpgv03udtibz, .table th.tinytable_css_7s1zuibczpgv03udtibz { text-align: left; }
+.table td.tinytable_css_1natxbh8iv4srb7nhdvb, .table th.tinytable_css_1natxbh8iv4srb7nhdvb { text-align: left; border-top: solid #d3d8dc 0.1em; border-bottom: solid #d3d8dc 0.05em; }
+</style>
+    <div class="container">
+      <table class="table table-borderless" id="tinytable_rfmhi8raev8kgofgfrgy" style="width: auto; margin-left: auto; margin-right: auto;" data-quarto-disable-processing="true">
+        <thead>
+        
+              <tr>
+                <th scope="col" data-row="0" data-col="0"> </th>
+                <th scope="col" data-row="0" data-col="1">ΔNb. Rent (lags)</th>
+                <th scope="col" data-row="0" data-col="2">ΔNb. Inc (lags)</th>
+              </tr>
+        </thead>
+        <tfoot><tr><td colspan="3">** p &lt; 0.01, *** p &lt; 0.001</td></tr></tfoot>
+        <tbody>
+                <tr>
+                  <td data-row="1" data-col="0">d_nb_rent_l1</td>
+                  <td data-row="1" data-col="1">0.042***</td>
+                  <td data-row="1" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="2" data-col="0"></td>
+                  <td data-row="2" data-col="1">(0.000)</td>
+                  <td data-row="2" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="3" data-col="0">d_nb_rent_l2</td>
+                  <td data-row="3" data-col="1">0.035***</td>
+                  <td data-row="3" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="4" data-col="0"></td>
+                  <td data-row="4" data-col="1">(0.000)</td>
+                  <td data-row="4" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="5" data-col="0">d_nb_rent_l3</td>
+                  <td data-row="5" data-col="1">0.029***</td>
+                  <td data-row="5" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="6" data-col="0"></td>
+                  <td data-row="6" data-col="1">(0.000)</td>
+                  <td data-row="6" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="7" data-col="0">d_nb_rent_l4</td>
+                  <td data-row="7" data-col="1">0.023***</td>
+                  <td data-row="7" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="8" data-col="0"></td>
+                  <td data-row="8" data-col="1">(0.000)</td>
+                  <td data-row="8" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="9" data-col="0">d_nb_rent_l5</td>
+                  <td data-row="9" data-col="1">0.016***</td>
+                  <td data-row="9" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="10" data-col="0"></td>
+                  <td data-row="10" data-col="1">(0.000)</td>
+                  <td data-row="10" data-col="2"></td>
+                </tr>
+                <tr>
+                  <td data-row="11" data-col="0">d_nb_inc_l1</td>
+                  <td data-row="11" data-col="1"></td>
+                  <td data-row="11" data-col="2">0.003***</td>
+                </tr>
+                <tr>
+                  <td data-row="12" data-col="0"></td>
+                  <td data-row="12" data-col="1"></td>
+                  <td data-row="12" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="13" data-col="0">d_nb_inc_l2</td>
+                  <td data-row="13" data-col="1"></td>
+                  <td data-row="13" data-col="2">0.004***</td>
+                </tr>
+                <tr>
+                  <td data-row="14" data-col="0"></td>
+                  <td data-row="14" data-col="1"></td>
+                  <td data-row="14" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="15" data-col="0">d_nb_inc_l3</td>
+                  <td data-row="15" data-col="1"></td>
+                  <td data-row="15" data-col="2">0.004***</td>
+                </tr>
+                <tr>
+                  <td data-row="16" data-col="0"></td>
+                  <td data-row="16" data-col="1"></td>
+                  <td data-row="16" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="17" data-col="0">d_nb_inc_l4</td>
+                  <td data-row="17" data-col="1"></td>
+                  <td data-row="17" data-col="2">0.003***</td>
+                </tr>
+                <tr>
+                  <td data-row="18" data-col="0"></td>
+                  <td data-row="18" data-col="1"></td>
+                  <td data-row="18" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="19" data-col="0">d_nb_inc_l5</td>
+                  <td data-row="19" data-col="1"></td>
+                  <td data-row="19" data-col="2">0.002***</td>
+                </tr>
+                <tr>
+                  <td data-row="20" data-col="0"></td>
+                  <td data-row="20" data-col="1"></td>
+                  <td data-row="20" data-col="2">(0.000)</td>
+                </tr>
+                <tr>
+                  <td data-row="21" data-col="0">Num.Obs.</td>
+                  <td data-row="21" data-col="1">8100000</td>
+                  <td data-row="21" data-col="2">7991944</td>
+                </tr>
+                <tr>
+                  <td data-row="22" data-col="0">R2</td>
+                  <td data-row="22" data-col="1">0.637</td>
+                  <td data-row="22" data-col="2">0.107</td>
+                </tr>
+                <tr>
+                  <td data-row="23" data-col="0">BIC</td>
+                  <td data-row="23" data-col="1">−101231616.2</td>
+                  <td data-row="23" data-col="2">−93590143.5</td>
+                </tr>
+        </tbody>
+      </table>
+    </div>
+<!-- hack to avoid NA insertion in last line -->
+<p>This analysis clearly shows the spatial workings of the model and
+that these spatial effects are not immediate as well but persist for
+several time points due to inertia of housing quality. A change in rent
+in the relevant neighbors of the focal housing unit causes a substantial
+change over several periods in the housing quality of the focal unit.
+The effect f a change in income, as before, is similar but smaller.</p>
+</div>
 <div id="residential-mobility" class="section level2">
 <h2>Residential Mobility</h2>
 <p>Gentrification is often linked to residential mobility, and in

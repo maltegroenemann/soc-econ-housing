@@ -319,8 +319,92 @@ While for rent inequality only income inequality matters, the spatial investment
 - The positive effect of income inequality on housing inequality is larger in more segregated cities.
 
 
+## Within-City Correlation of Neighborhood Averages
+
+Besides a greater variance in housing quality overall, segregation should also influence how closely housing quality in a neighborhood follows average neighborhood income. With higher segregation by income, within-neighborhood variance in incomes is lower and the investment signals to landlords are less noisy. Therefore, higher segregation should cause a higher correlation between average income and average housing quality over all neighborhoods in a city.
+
+```{r nbave_correlations}
+ave_utility_by_nb <- unit_data %>%
+  select(sample_id, t, nb, utility) %>%
+  group_by(sample_id, t, nb) %>%
+  summarise(ave_utility = mean(utility, na.rm = TRUE), .groups = "drop")
+
+nb_data <- nb_data %>%
+  left_join(ave_utility_by_nb, by = c("sample_id", "t", "nb"))
+
+nbave_cor <- nb_data %>%
+  group_by(sample_id, t) %>%
+  summarise(cor_inc_hq     = cor(ave_inc,     ave_quality),
+            cor_inc_rent   = cor(ave_inc,     ave_rent),
+            cor_inc_util   = cor(ave_inc,     ave_utility),
+            cor_hq_rent    = cor(ave_quality, ave_rent),
+            cor_util_rent  = cor(ave_utility, ave_rent),
+            .groups = "drop")
+
+nbave_cor <- city_data %>%
+  select(sample_id, t, inc_seg, quality_seg, inc_gini, quality_gini) %>%
+  full_join(nbave_cor, by = c("sample_id", "t")) %>%
+  pivot_longer(cols = starts_with("cor_"),
+               cols_vary = "slowest",
+               names_to = "vars",
+               values_to = "correlation")
+
+ggplot(nbave_cor) +
+  aes(x = inc_seg,
+      y = correlation,
+      colour = vars,
+      group = vars) +
+  geom_smooth() +
+  labs(x = "Income Segregation H^R",
+       y = "Correlation",
+       title = "Within-City Correlation of Neighborhood Averages",
+       colour = "Variables") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+```{r nbave_correlations_cleanup, include=FALSE}
+rm(nbave_cor, ave_utility_by_nb)
+gc()
+```
+
+Although the correlations between income, rent, housing quality and utility are high in all cases, there indeed appears to be an increase with higher levels of income segregation.
+
+
 # Neighborhood Level
 
+## Quality Slopes by Income Rank 
+
+Similar to the section directly above, segregation should moderate the slope of housing quality by income rank. The neighborhoods with the highest average income (low ranks, e.g. 1, 2, 3, ...) should have the highest quality (model 1), rent (model 2), and utility provided to its residents (model 3). So the main effect should be negative: a higher rank number coincides with lower rent and quality. When a city is more segregated, the absolute differences in income between neighborhoods of different ranks are larger and the investment signal to landlords is clearer. So the slope should be steeper (more negative) with higher segregation and the interaction effect should be negative.
+
+```{r quality_slope}
+nb_data_slope <- nb_data %>%
+  left_join(city_data %>% select(sample_id, t, inc_seg),
+            by = c("sample_id", "t"))
+
+modelsummary(list(
+  feols(data = nb_data_slope,
+              ave_quality ~ rank_inc * inc_seg,
+              cluster = c("sample_id", "t")),
+  feols(data = nb_data_slope,
+              ave_rent ~ rank_inc * inc_seg,
+              cluster = c("sample_id", "t")),
+  feols(data = nb_data_slope,
+              ave_utility ~ rank_inc * inc_seg,
+              cluster = c("sample_id", "t"))
+),
+  output = "html",
+  stars = c('**' = .01, '***' = .001),
+  gof_map = c("nobs", "r.squared", "bic"))
+```
+
+```{r quality_slope_cleanup, include=FALSE}
+rm(nb_data_slope)
+gc()
+```
+
+
+## Neighborhood Stability
 
 ```{r neighborhood_1}
 stability_data <- nb_data %>%

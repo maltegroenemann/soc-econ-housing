@@ -35,9 +35,8 @@ label_a <- c(`0` = "Preferences: Only Housing Quality", `0.25` = "Realistic: Hou
 # colourblind-friendly and black-and-white compatible differentiation aesthetics
 # adopted from http://www.cookbook-r.com/Graphs/Colors_(ggplot2)/#a-colorblind-friendly-palette
 cb_palette <- c("#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9")
-lines <- c("solid", "twodash", "longdash", "dotdash")
-shapes <- c(15, 16, 17, 18)
-
+lines <- c("solid", "twodash", "longdash", "dotdash", "dotted")
+shapes <- c(0, 1, 2, 5, 6)
 
 # Figure Segregation
 seg_data <- city_data %>%

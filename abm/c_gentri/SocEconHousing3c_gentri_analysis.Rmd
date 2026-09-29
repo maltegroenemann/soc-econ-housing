@@ -533,6 +533,61 @@ The interaction terms between pre-intervention status and rent — the gentrific
 But why does the model not produce gentrification in response to the demand shocks? Gentrification requires a neighborhood that is desirable (high status or good quality) but low rent ("rent gap"). In the model's spatial equilibrium, this gap is fully closed: segregation levels are very high and therefore, neighborhood characteristics correlate highly. It is likely that the continuous, proportional investment response of landlords ensures that housing quality — and therefore rent — tracks neighborhood status without threshold effects or coordination failure. Neighborhoods cannot be stuck in a low-investment trap, so no undervalued high-potential areas exist for a demand shock to selectively trigger. The model captures the gentrification *mechanism* as a process of equilibration during initial city formation, but its scope condition is that it abstracts from the frictions — discrete investments with threshold effects, coordination failure, historical path dependencies, and pioneer households with high status but low income — that sustain rent gaps in real cities and make them selectively vulnerable to demand-shock-driven neighborhood upgrading. Because all neighborhoods are equally responsive to demand shocks, the intervention results in a uniform effect across all neighborhoods while it remains the neighborhood hierarchy intact.
 
 
+## Mechanisms: Changes in Income and Housing Quality
+
+The fact that neighborhoods do change, if not necessarily in rank but in average income after a shock to the income distribution, makes it possible to trace the investment rule of landlords. This can be a blueprint for empirical analyses and would not be possible in the hypothesis experiment because there are no changes over time there. This section therefore shows how quality changes after a change in incomes in the neighborhood because landlords are sideways-looking.
+
+```{r mechanism}
+max_lag <- 5L
+
+# First differences with distributed lags.
+# Lags are computed directly from levels to avoid chaining lag() calls.
+# Include max_lag + 1 extra pre-intervention steps so all lag columns are
+# non-NA at t == intervention_time.
+nb_mechanism <- nb_data %>%
+  filter(t >= intervention_time - max_lag - 1L,
+         t <  intervention_time + 50L) %>%
+  arrange(sample_id, nb, t) %>%
+  group_by(sample_id, nb) %>%
+  mutate(
+    d_quality = ave_quality - lag(ave_quality),
+    d_rent_l1 = lag(ave_rent, 1L) - lag(ave_rent, 2L),
+    d_rent_l2 = lag(ave_rent, 2L) - lag(ave_rent, 3L),
+    d_rent_l3 = lag(ave_rent, 3L) - lag(ave_rent, 4L),
+    d_rent_l4 = lag(ave_rent, 4L) - lag(ave_rent, 5L),
+    d_rent_l5 = lag(ave_rent, 5L) - lag(ave_rent, 6L),
+    d_inc_l1  = lag(ave_inc,  1L) - lag(ave_inc,  2L),
+    d_inc_l2  = lag(ave_inc,  2L) - lag(ave_inc,  3L),
+    d_inc_l3  = lag(ave_inc,  3L) - lag(ave_inc,  4L),
+    d_inc_l4  = lag(ave_inc,  4L) - lag(ave_inc,  5L),
+    d_inc_l5  = lag(ave_inc,  5L) - lag(ave_inc,  6L)
+  ) %>%
+  ungroup() %>%
+  filter(t >= intervention_time, !is.na(d_inc_l5))
+
+modelsummary(
+  list(
+    "ΔRent (lags)" = feols(d_quality ~ d_rent_l1 + d_rent_l2 +
+                             d_rent_l3 + d_rent_l4 + d_rent_l5 | sample_id,
+                           data = nb_mechanism, cluster = ~sample_id),
+    "ΔInc (lags)"  = feols(d_quality ~ d_inc_l1 + d_inc_l2 +
+                             d_inc_l3 + d_inc_l4 + d_inc_l5  | sample_id,
+                           data = nb_mechanism, cluster = ~sample_id)
+  ),
+  output  = "html",
+  stars   = c("**" = .01, "***" = .001),
+  gof_map = c("nobs", "r.squared", "bic")
+)
+```
+
+```{r mechanism_cleanup, include=FALSE}
+rm(nb_mechanism, max_lag)
+gc()
+```
+
+The regression table shows results from two first-differences models where a change in housing quality is regressed on a change in rent or a change in income. As we would expect due to the investment rule in the model, where landlords invest based on changes in local rents, an increase in average rent in the neighborhood is followed by an increase in average neighborhood housing quality. However, this effect is not immediate but sustained: a change in rents has a sizeable and significant effect on a change in housing quality for several time periods due to the slow adaption of inert housing quality and local spatial feedback loops (see individual level below). The pattern is similar but less pronounced for the lags in income because changes in local incomes is not directly tied to investment but it is both a cause and a consequence of investment: a rise in attractivity of a neighborhood leads rich households to move there and the investment cycle continues as long as there is a new equilibrium. Because the effect of a change in income is less immediate than a change in rent, the effect rises with lagged time at first before declining again.
+
+
 # Vacancies
 
 ```{r vacancies-timeseries}
@@ -618,6 +673,88 @@ As established in the main analysis, most neighborhoods have few or no vacancies
 
 
 # Individual Level
+
+## Mechanisms: Spatial Interdependence of Housing Units
+
+Similar to the analysis above showing the investment mechanism at the neighborhood level, this analysis at the housing unit level can not only show the lagged effect of changes in rents and incomes in a neighborhood onto its changes in housing quality, but specifically that changes in rent and income in neighboring units have an effect on the focal unit. There is a dependence both in space and in time. The spatial mechanism operates on the 3x3 Moore neighborhood of each unit and was averaged out in the aggregated neighborhoods. The table shows the results of regressing the change in a unit's housing quality on lagged changes in the average rent of its 8 Moore neighbors.
+
+```{r mechanism-unit}
+grid_size <- 30L
+max_lag   <- 5L
+
+# Filter to transition period plus enough pre-intervention steps for lags.
+unit_mechanism <- unit_data %>%
+  filter(t >= intervention_time - max_lag - 1L,
+         t <  intervention_time + 50L)
+
+# Static Moore-neighbor lookup for 30x30 toroidal city grid (7200 rows).
+neighbor_lookup <- expand.grid(x = 0L:(grid_size - 1L),
+                               y = 0L:(grid_size - 1L)) %>%
+  cross_join(tibble(dx = c(-1L,-1L,-1L, 0L, 0L, 1L, 1L, 1L),
+                    dy = c(-1L, 0L, 1L,-1L, 1L,-1L, 0L, 1L))) %>%
+  mutate(x_nb = (x + dx) %% grid_size,
+         y_nb = (y + dy) %% grid_size) %>%
+  select(x, y, x_nb, y_nb)
+
+# Average rent and income of the 8 Moore neighbors for each unit at each time step.
+# hh_income is NA for vacant units, so na.rm = TRUE gives the occupied-unit average.
+vars_by_unit <- unit_mechanism %>%
+  select(sample_id, t, x, y, rent, hh_income)
+
+nb_avgs <- vars_by_unit %>%
+  left_join(neighbor_lookup, by = c("x", "y")) %>%
+  left_join(
+    vars_by_unit %>% rename(x_nb = x, y_nb = y, rent_nb = rent, inc_nb = hh_income),
+    by = c("sample_id", "t", "x_nb", "y_nb")
+  ) %>%
+  group_by(sample_id, t, x, y) %>%
+  summarise(nb_avg_rent = mean(rent_nb,  na.rm = TRUE),
+            nb_avg_inc  = mean(inc_nb,   na.rm = TRUE),
+            .groups = "drop")
+
+# First differences with distributed lags at cell level.
+unit_mechanism <- unit_mechanism %>%
+  left_join(nb_avgs, by = c("sample_id", "t", "x", "y")) %>%
+  arrange(sample_id, x, y, t) %>%
+  group_by(sample_id, x, y) %>%
+  mutate(
+    d_quality    = housing_quality      - lag(housing_quality),
+    d_nb_rent_l1 = lag(nb_avg_rent, 1L) - lag(nb_avg_rent, 2L),
+    d_nb_rent_l2 = lag(nb_avg_rent, 2L) - lag(nb_avg_rent, 3L),
+    d_nb_rent_l3 = lag(nb_avg_rent, 3L) - lag(nb_avg_rent, 4L),
+    d_nb_rent_l4 = lag(nb_avg_rent, 4L) - lag(nb_avg_rent, 5L),
+    d_nb_rent_l5 = lag(nb_avg_rent, 5L) - lag(nb_avg_rent, 6L),
+    d_nb_inc_l1  = lag(nb_avg_inc,  1L) - lag(nb_avg_inc,  2L),
+    d_nb_inc_l2  = lag(nb_avg_inc,  2L) - lag(nb_avg_inc,  3L),
+    d_nb_inc_l3  = lag(nb_avg_inc,  3L) - lag(nb_avg_inc,  4L),
+    d_nb_inc_l4  = lag(nb_avg_inc,  4L) - lag(nb_avg_inc,  5L),
+    d_nb_inc_l5  = lag(nb_avg_inc,  5L) - lag(nb_avg_inc,  6L)
+  ) %>%
+  ungroup() %>%
+  filter(t >= intervention_time, !is.na(d_nb_rent_l5))
+
+modelsummary(
+  list(
+    "ΔNb. Rent (lags)" = feols(d_quality ~ d_nb_rent_l1 + d_nb_rent_l2 +
+                                 d_nb_rent_l3 + d_nb_rent_l4 + d_nb_rent_l5 | sample_id,
+                               data = unit_mechanism, cluster = ~sample_id),
+    "ΔNb. Inc (lags)"  = feols(d_quality ~ d_nb_inc_l1 + d_nb_inc_l2 +
+                                 d_nb_inc_l3 + d_nb_inc_l4 + d_nb_inc_l5  | sample_id,
+                               data = unit_mechanism, cluster = ~sample_id)
+  ),
+  output  = "html",
+  stars   = c("**" = .01, "***" = .001),
+  gof_map = c("nobs", "r.squared", "bic")
+)
+```
+
+```{r mechanism-unit-cleanup, include=FALSE}
+rm(unit_mechanism, vars_by_unit, nb_avgs, neighbor_lookup, grid_size, max_lag)
+gc()
+```
+
+This analysis clearly shows the spatial workings of the model and that these spatial effects are not immediate as well but persist for several time points due to inertia of housing quality. A change in rent in the relevant neighbors of the focal housing unit causes a substantial change over several periods in the housing quality of the focal unit. The effect of a change in income, as before, is similar but smaller.
+
 
 ## Residential Mobility
 
